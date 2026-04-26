@@ -11,15 +11,15 @@ export default defineConfig({
     },
   },
   server: {
-    port: parseInt(process.env.VITE_PORT || '3000'),
+    port: parseInt(process.env.APP_PORT || process.env.VITE_PORT || '3000'),
     strictPort: true,
     proxy: {
       '/api': {
-        target: `http://localhost:${parseInt(process.env.VITE_PORT || '3000') + 100}`,
+        target: `http://localhost:${parseInt(process.env.APP_PORT || process.env.VITE_PORT || '3000') + 100}`,
         changeOrigin: true,
       },
       '/events': {
-        target: `http://localhost:${parseInt(process.env.VITE_PORT || '3000') + 100}`,
+        target: `http://localhost:${parseInt(process.env.APP_PORT || process.env.VITE_PORT || '3000') + 100}`,
         changeOrigin: true,
       },
     },
