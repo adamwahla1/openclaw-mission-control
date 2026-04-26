@@ -30,7 +30,7 @@ const COLUMNS: { id: TaskStatus; title: string; color: string }[] = [
 
 export default function TaskBoard() {
   useSSE()
-  const { tasks, loading, fetchTasks, moveTask } = useTaskStore()
+  const { tasks, loading, fetchTasks, moveTask, updateTask } = useTaskStore()
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
@@ -128,6 +128,10 @@ export default function TaskBoard() {
         <TaskDrawer
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
+          onTaskUpdate={(updated) => {
+            updateTask(updated.id, updated)
+            setSelectedTask(updated)
+          }}
         />
       )}
 

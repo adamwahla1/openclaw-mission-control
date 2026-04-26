@@ -301,7 +301,7 @@ async def _run_gateway_session(task_id: str, session_id: str, prompt: str, agent
 
 async def _simulate_agent_response(task_id: str, session_id: str | None, agent: dict):
     """
-    Offline simulation: produce realistic-looking agent responses.
+    Offline simulation: produce realistic-looking agent responses, then a final report.
     Used when gateway is not connected, for UI development/demo.
     """
     await asyncio.sleep(1.5)
@@ -315,24 +315,149 @@ async def _simulate_agent_response(task_id: str, session_id: str | None, agent: 
         except Exception:
             soul = {}
 
+    # Load task for context
+    db = await get_db()
+    async with db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)) as cursor:
+        task_row = await cursor.fetchone()
+    task = dict(task_row) if task_row else {}
+    task_title = task.get("title", "Task")
+    task_desc = task.get("description", "") or ""
+    task_priority = task.get("priority", "medium")
+    task_tags = json.loads(task.get("tags", "[]"))
+    skills = soul.get("skills", ["analysis", "synthesis"])
+    skill_name = skills[0].replace("_", " ").title() if skills else "Research"
+
     steps = [
-        f"✅ **Understanding confirmed.** I'm {name}, your {role} specialist.\n\nI've analyzed the task and have a clear picture of what's needed.",
-        f"📋 **Approach planned:**\n1. {soul.get('skills', ['gather information'])[0].replace('_', ' ').title()}\n2. Deep analysis of available data\n3. Synthesis and structured output\n4. Quality review\n5. Final deliverable\n\nStarting with step 1 now...",
-        f"🔍 **Step 1 — Executing...**\n\nGathering relevant context and resources. This involves cross-referencing multiple knowledge areas related to the task.\n\nProgress: ████████░░ 80%",
-        f"✨ **Initial findings:**\n\nKey insights identified:\n• Core requirement is well-scoped\n• Multiple viable approaches exist\n• Recommend prioritizing quality over speed\n\nMoving to synthesis phase...",
-        f"📊 **Analysis complete.** Here's my structured output:\n\n**Summary**: Task has been processed successfully.\n**Confidence**: High\n**Recommended next steps**: Review outputs and proceed to implementation.\n\n*Task ready for review.*",
+        f"✅ **Understanding confirmed.** I'm {name}, your {role} specialist.\n\nI've reviewed the task and have a clear picture of what's needed. Starting work now.",
+        f"📋 **Approach:**\n1. {skill_name} — gather all relevant information\n2. Deep analysis — identify patterns and key insights\n3. Synthesis — consolidate findings into structured output\n4. Quality review — validate accuracy and completeness\n5. Final report — deliver actionable summary\n\nExecuting step 1...",
+        f"🔍 **Progress update:**\n\nCompleted initial {skill_name.lower()} phase. Located {3 + len(task_tags)} relevant sources/inputs.\nKey themes emerging:\n{''.join(f'• {t.title()} patterns identified{chr(10)}' for t in (task_tags[:3] if task_tags else ['primary', 'secondary']))}\nMoving to analysis phase...",
+        f"✨ **Analysis complete.**\n\nSynthesis phase done. Confidence level: **High**\n\nCore findings ready. Generating final report now...",
     ]
 
     for i, step in enumerate(steps):
         await asyncio.sleep(2 + i * 1.5)
         await _persist_message(task_id, session_id, "assistant", step, agent)
 
-    # Mark task as review
-    db = await get_db()
+    # Generate final report
+    await asyncio.sleep(2.0)
+    report = _generate_final_report(task_title, task_desc, task_tags, task_priority, name, role, skills)
+
+    # Save report to task
     await db.execute(
-        "UPDATE tasks SET status = 'review', updated_at = datetime('now') WHERE id = ?",
-        (task_id,),
+        "UPDATE tasks SET final_report = ?, status = 'review', updated_at = datetime('now') WHERE id = ?",
+        (report, task_id),
     )
     await db.commit()
-    await sse.broadcast("task.updated", {"id": task_id, "status": "review"})
+
+    # Broadcast updated task (with report)
+    async with db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)) as cursor:
+        updated_row = await cursor.fetchone()
+    if updated_row:
+        updated_task = dict(updated_row)
+        updated_task["tags"] = json.loads(updated_task.get("tags", "[]"))
+        updated_task["is_template"] = bool(updated_task.get("is_template", 0))
+        await sse.broadcast("task.updated", updated_task)
+
+    # Also post the report as a final message so the chat log shows it
+    await _persist_message(
+        task_id, session_id, "assistant",
+        f"✅ **Final report generated.** Task moved to Review.\n\nOpen the **Report** tab to view the full document.",
+        agent,
+    )
     _active_dispatches.pop(task_id, None)
+
+
+def _generate_final_report(
+    title: str, description: str, tags: list, priority: str,
+    agent_name: str, role: str, skills: list,
+) -> str:
+    """Generate a structured markdown report for a completed task."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).strftime("%B %d, %Y at %H:%M UTC")
+    tags_str = ", ".join(f"`{t}`" for t in tags) if tags else "_none_"
+    skills_str = "\n".join(f"- {s.replace('_', ' ').title()}" for s in skills[:5])
+
+    # Build findings section based on role
+    if role == "researcher":
+        findings = f"""### Key Findings
+
+1. **Primary Research Area** — Comprehensive review completed across all relevant domains related to "{title}". Sources cross-referenced for accuracy.
+
+2. **Core Insights** — The task scope is well-defined with clear success criteria. Multiple validated approaches exist, each with distinct trade-offs.
+
+3. **Evidence Quality** — High confidence in findings. All data points validated against at least two independent sources.
+
+4. **Emerging Patterns** — Consistent themes identified across research materials. No significant contradictions found.
+
+### Sources & References
+- Domain knowledge base (primary)
+- Cross-referenced analysis (secondary)
+- Pattern synthesis across {2 + len(tags)} relevant knowledge areas"""
+
+    elif role in ("coder", "analyst"):
+        findings = f"""### Analysis Results
+
+1. **Technical Assessment** — Full analysis of "{title}" completed. Implementation pathways identified and evaluated.
+
+2. **Recommended Approach** — Option A (primary recommendation) offers the best balance of quality, speed, and maintainability.
+
+3. **Risk Assessment** — Low-medium risk profile. Main dependencies are well-understood and stable.
+
+4. **Performance Considerations** — Estimated efficiency improvement: 40-60% over baseline approach.
+
+### Technical Notes
+- All edge cases documented
+- Error handling patterns identified
+- Integration points mapped"""
+
+    else:
+        findings = f"""### Deliverable Summary
+
+1. **Scope Completion** — All requirements for "{title}" addressed in full.
+
+2. **Quality Metrics** — Output meets defined criteria. Confidence: High.
+
+3. **Key Decisions** — Three strategic decisions made during execution; all documented below.
+
+4. **Outstanding Items** — None. Task fully resolved."""
+
+    desc_section = f"\n> {description}\n" if description else ""
+
+    return f"""# {title}
+
+**Agent:** {agent_name} ({role.title()} Specialist)
+**Completed:** {now}
+**Priority:** {priority.upper()}
+**Tags:** {tags_str}
+{desc_section}
+---
+
+## Executive Summary
+
+This report documents the work completed for "{title}". The task was processed by {agent_name} using the following capabilities: {', '.join(s.replace('_', ' ') for s in skills[:3])}.
+
+All objectives have been met. The output is ready for review.
+
+---
+
+{findings}
+
+---
+
+## Agent Capabilities Applied
+
+{skills_str}
+
+---
+
+## Recommended Next Steps
+
+1. **Review** — Read through findings and validate against original requirements
+2. **Iterate** — If adjustments needed, add a comment and re-dispatch
+3. **Close** — Mark as Done once satisfied, or escalate to Quality Review
+4. **Archive** — Move to Archived after actioning the outputs
+
+---
+
+_Report generated automatically by OpenClaw Mission Control · {agent_name}_
+"""

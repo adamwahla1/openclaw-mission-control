@@ -16,6 +16,7 @@ export interface Task {
   actual_tokens: number | null
   session_id: string | null
   is_template: boolean
+  final_report: string | null
   created_at: string
   updated_at: string
 }

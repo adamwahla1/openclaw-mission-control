@@ -135,4 +135,5 @@ def _row_to_task(row) -> dict:
     d = dict(row)
     d["tags"] = json.loads(d.get("tags", "[]"))
     d["is_template"] = bool(d.get("is_template", 0))
+    # final_report is plain text/markdown, pass through as-is
     return d

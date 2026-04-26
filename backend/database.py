@@ -360,6 +360,11 @@ MIGRATIONS = [
     ALTER TABLE task_messages ADD COLUMN tokens INTEGER;
     INSERT OR REPLACE INTO schema_version (version) VALUES (2);
     """,
+    # Migration 3: Final report column on tasks
+    """
+    ALTER TABLE tasks ADD COLUMN final_report TEXT;
+    INSERT OR REPLACE INTO schema_version (version) VALUES (3);
+    """,
 ]
 
 
