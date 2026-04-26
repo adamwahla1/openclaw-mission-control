@@ -1,32 +1,27 @@
 [
   {
-    "content": "[phase2a-1] Projects backend — CRUD, auto-cluster endpoint, files, handovers",
-    "id": "2a-1",
+    "content": "Create backend/services/ai_client.py — Gemini API wrapper",
+    "id": "3A-1",
     "status": "completed"
   },
   {
-    "content": "[phase2a-2] Projects frontend — project list, detail page, file browser, handover docs",
-    "id": "2a-2",
+    "content": "Create backend/services/debate_engine.py — AI-powered debate with multi-turn context",
+    "id": "3A-2",
     "status": "completed"
   },
   {
-    "content": "[phase2a-3] Smart auto-bundling — cluster related tasks into projects by tags/keywords",
-    "id": "2a-3",
+    "content": "Rewrite debates.py simulate endpoint to use debate_engine",
+    "id": "3A-3",
     "status": "completed"
   },
   {
-    "content": "[phase2b-1] Debate backend — create debate, add participants, rounds, messages, convergence",
-    "id": "2b-1",
+    "content": "Update frontend DebateRoom to show streaming-style messages",
+    "id": "3A-4",
     "status": "completed"
   },
   {
-    "content": "[phase2b-2] Debate frontend — group chat UI, round indicator, convergence meter, questions",
-    "id": "2b-2",
-    "status": "completed"
-  },
-  {
-    "content": "[phase2-3] Wire projects + debate into Dashboard and Sidebar",
-    "id": "2-3",
-    "status": "completed"
+    "content": "Test end-to-end debate with AI",
+    "id": "3A-5",
+    "status": "in_progress"
   }
 ]

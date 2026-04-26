@@ -248,7 +248,9 @@ async def advance_round(debate_id: str):
 # ── Simulate debate ──────────────────────────────────────────────────────────
 @router.post("/{debate_id}/simulate")
 async def simulate_debate(debate_id: str):
-    """Run a simulated debate with auto-generated agents and messages."""
+    """Run an AI-powered debate with intelligent agents that think like experts."""
+    from services.debate_engine import generate_debate_message, generate_debate_conclusion
+
     db = await get_db()
 
     async with db.execute("SELECT * FROM debates WHERE id = ?", (debate_id,)) as cursor:
@@ -260,6 +262,13 @@ async def simulate_debate(debate_id: str):
     topic = debate["topic"]
     max_rounds = debate["max_rounds"]
 
+    # Mark debate as active
+    await db.execute(
+        "UPDATE debates SET status = 'active', updated_at = datetime('now') WHERE id = ?",
+        (debate_id,),
+    )
+    await db.commit()
+
     # Check for existing participants
     async with db.execute(
         "SELECT dp.*, a.name FROM debate_participants dp JOIN agents a ON a.id = dp.agent_id WHERE dp.debate_id = ?",
@@ -267,14 +276,14 @@ async def simulate_debate(debate_id: str):
     ) as cursor:
         participants = await cursor.fetchall()
 
-    # If no participants, create 2-3 agents
+    # If no participants, create 3 expert agents
     if not participants:
         from services.agent_factory import create_agent_for_task
 
         roles_data = [
-            ("proponent", "Advocates for the proposal, finding supporting arguments and evidence."),
-            ("opponent", "Challenges the proposal, identifying risks and counter-arguments."),
-            ("moderator", "Keeps the debate on track, summarizes points, and identifies common ground."),
+            ("proponent", "Expert advocate who argues in favor with evidence, data, and persuasive reasoning."),
+            ("opponent", "Critical analyst who challenges assumptions, identifies risks, and presents counter-evidence."),
+            ("moderator", "Neutral synthesis expert who frames the debate, identifies common ground, and clarifies tensions."),
         ]
 
         for role, desc in roles_data:
@@ -290,7 +299,7 @@ async def simulate_debate(debate_id: str):
 
         await db.commit()
 
-        # Re-fetch participants
+        # Re-fetch participants with agent names
         async with db.execute(
             "SELECT dp.*, a.name FROM debate_participants dp JOIN agents a ON a.id = dp.agent_id WHERE dp.debate_id = ?",
             (debate_id,),
@@ -299,39 +308,16 @@ async def simulate_debate(debate_id: str):
 
     participant_list = [dict(p) for p in participants]
 
-    # Simulated viewpoints per role per round
-    proponent_templates = [
-        "I strongly believe {topic} is the right direction. The evidence shows clear benefits including improved efficiency and better outcomes.",
-        "Building on my previous point, {topic} offers significant advantages. The data consistently supports this approach over alternatives.",
-        "To address the concerns raised: the risks of {topic} are manageable and far outweighed by the benefits we've discussed.",
-        "The case for {topic} remains compelling. Each round has strengthened the argument with concrete evidence.",
-        "In conclusion, {topic} represents our best path forward. The evidence, benefits, and feasibility all align.",
-    ]
+    # Order: proponent → opponent → moderator each round
+    speak_order = sorted(
+        participant_list,
+        key=lambda p: {"proponent": 0, "opponent": 1, "moderator": 2}.get(p.get("role", ""), 3),
+    )
 
-    opponent_templates = [
-        "I must disagree with the premise of {topic}. There are significant risks and downsides that need careful consideration.",
-        "Furthermore, {topic} could lead to unintended consequences. We've seen similar approaches fail in comparable situations.",
-        "While I acknowledge some benefits, the costs of {topic} are substantial and the evidence for success is mixed at best.",
-        "The concerns about {topic} have not been adequately addressed. We should proceed with extreme caution.",
-        "In summary, {topic} as proposed carries too much risk. I recommend a more conservative approach with better safeguards.",
-    ]
+    # Track all messages for context building
+    all_messages_context: list[dict] = []
 
-    moderator_templates = [
-        "Let me frame this discussion on {topic}. We have strong arguments on both sides. The key question is whether the benefits justify the risks.",
-        "Both sides have made valid points about {topic}. The proponent highlights efficiency gains, while the opponent raises legitimate risk concerns.",
-        "I'm seeing some common ground emerging on {topic}. Both sides agree on the importance of careful implementation.",
-        "The debate on {topic} is reaching a critical juncture. The remaining disagreement centers on risk tolerance and evidence interpretation.",
-        "To summarize this debate on {topic}: there is agreement on the potential benefits, but legitimate disagreement on risk assessment and implementation approach.",
-    ]
-
-    role_templates = {
-        "proponent": proponent_templates,
-        "opponent": opponent_templates,
-        "moderator": moderator_templates,
-    }
-
-    # Run rounds
-    all_messages = []
+    # Run rounds — each message is AI-generated
     for round_num in range(max_rounds):
         # Update current round
         await db.execute(
@@ -346,14 +332,20 @@ async def simulate_debate(debate_id: str):
             "status": "active",
         })
 
-        # Each participant posts a message
-        for participant in participant_list:
+        for participant in speak_order:
             role = participant.get("role", "participant")
-            templates = role_templates.get(role, moderator_templates)
-            template = templates[round_num % len(templates)]
-            content = template.format(topic=topic)
-
+            agent_name = participant.get("name", role.title())
             stance = "support" if role == "proponent" else "oppose" if role == "opponent" else "neutral"
+
+            # Generate AI message with full debate context
+            content = await generate_debate_message(
+                topic=topic,
+                role=role,
+                round_num=round_num + 1,
+                max_rounds=max_rounds,
+                prior_messages=all_messages_context,
+                agent_name=agent_name,
+            )
 
             msg_id = str(uuid.uuid4())
             await db.execute(
@@ -362,13 +354,13 @@ async def simulate_debate(debate_id: str):
                 (msg_id, debate_id, participant["agent_id"], round_num + 1, content, stance),
             )
 
-            all_messages.append({
-                "id": msg_id,
-                "debate_id": debate_id,
-                "agent_id": participant["agent_id"],
-                "round_number": round_num + 1,
+            # Add to context for next speakers
+            all_messages_context.append({
+                "sender_role": role,
+                "sender_name": agent_name,
                 "content": content,
                 "stance": stance,
+                "round_number": round_num + 1,
             })
 
             await sse.broadcast("debate.message", {
@@ -376,29 +368,18 @@ async def simulate_debate(debate_id: str):
                 "message": {
                     "id": msg_id,
                     "agent_id": participant["agent_id"],
+                    "agent_name": agent_name,
                     "round_number": round_num + 1,
                     "content": content,
                     "stance": stance,
                 },
             })
 
-    # Generate conclusion
-    conclusion = (
-        f"## Debate Conclusion: {topic}\n\n"
-        f"After {max_rounds} rounds of structured debate, the following key points emerged:\n\n"
-        f"**Arguments in Favor:**\n"
-        f"- The proposal offers clear efficiency and outcome improvements\n"
-        f"- Evidence supports the approach over alternatives\n"
-        f"- Risks are manageable with proper safeguards\n\n"
-        f"**Arguments Against:**\n"
-        f"- Significant risks and potential unintended consequences exist\n"
-        f"- Evidence for success is mixed in comparable situations\n"
-        f"- A more conservative approach may be warranted\n\n"
-        f"**Common Ground:**\n"
-        f"- Both sides agree on the importance of careful implementation\n"
-        f"- The potential benefits are acknowledged by all parties\n"
-        f"- Risk mitigation strategies should be a priority\n\n"
-        f"**Recommendation:** Proceed with a phased approach, starting with a pilot to validate assumptions before full implementation."
+    # Generate AI-powered conclusion
+    conclusion = await generate_debate_conclusion(
+        topic=topic,
+        all_messages=all_messages_context,
+        max_rounds=max_rounds,
     )
 
     await db.execute(
@@ -436,9 +417,13 @@ async def _get_debate(debate_id: str) -> dict:
         p_rows = await cursor.fetchall()
     debate["participants"] = [dict(r) for r in p_rows]
 
-    # Messages
+    # Messages (with agent names)
     async with db.execute(
-        "SELECT * FROM debate_messages WHERE debate_id = ? ORDER BY round_number ASC, created_at ASC",
+        """SELECT dm.*, a.name AS agent_name
+           FROM debate_messages dm
+           LEFT JOIN agents a ON a.id = dm.agent_id
+           WHERE dm.debate_id = ?
+           ORDER BY dm.round_number ASC, dm.created_at ASC""",
         (debate_id,),
     ) as cursor:
         m_rows = await cursor.fetchall()

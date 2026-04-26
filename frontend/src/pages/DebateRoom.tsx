@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   MessageSquare, Plus, Play, ChevronRight, Send, HelpCircle,
-  CheckCircle, Users, FileText,
+  CheckCircle, Users, FileText, Brain, Sparkles,
 } from 'lucide-react'
 import { useDebateStore } from '@/store/debateStore'
 import { api } from '@/lib/api'
@@ -18,14 +18,14 @@ import {
 import type { Debate, DebateMessage, DebateQuestion } from '@/types'
 
 const STANCE_COLORS: Record<string, string> = {
-  pro: 'bg-green-500/10 border-green-500/20',
-  con: 'bg-red-500/10 border-red-500/20',
+  support: 'bg-green-500/10 border-green-500/30',
+  oppose: 'bg-red-500/10 border-red-500/30',
   neutral: 'bg-secondary border-border',
 }
 
 const STANCE_BADGE: Record<string, 'success' | 'destructive' | 'secondary'> = {
-  pro: 'success',
-  con: 'destructive',
+  support: 'success',
+  oppose: 'destructive',
   neutral: 'secondary',
 }
 
@@ -34,7 +34,17 @@ const AGENT_COLORS = [
   'bg-pink-500', 'bg-cyan-500', 'bg-yellow-500', 'bg-red-500',
 ]
 
-function getAgentColor(agentId: string): string {
+// Map role to a consistent color index
+const ROLE_COLOR_INDEX: Record<string, number> = {
+  proponent: 0,
+  opponent: 1,
+  moderator: 2,
+}
+
+function getAgentColor(agentId: string, role?: string): string {
+  if (role && ROLE_COLOR_INDEX[role] !== undefined) {
+    return AGENT_COLORS[ROLE_COLOR_INDEX[role]]
+  }
   let hash = 0
   for (let i = 0; i < agentId.length; i++) hash = agentId.charCodeAt(i) + ((hash << 5) - hash)
   return AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length]
@@ -42,6 +52,37 @@ function getAgentColor(agentId: string): string {
 
 function getInitials(name: string): string {
   return name.split(/[\s_-]/).map((w) => w[0]).join('').toUpperCase().slice(0, 2)
+}
+
+/** Simple markdown renderer for debate messages */
+function MarkdownText({ content }: { content: string }) {
+  const html = content
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 rounded bg-secondary text-xs font-mono">$1</code>')
+    // Block quotes
+    .replace(/^>\s?(.+)$/gm, '<blockquote class="border-l-2 border-primary/30 pl-3 text-muted-foreground italic">$1</blockquote>')
+    // Headers
+    .replace(/^### (.+)$/gm, '<h4 class="font-semibold text-sm mt-2 mb-1">$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 class="font-semibold mt-2 mb-1">$1</h3>')
+    // Bullet lists
+    .replace(/^- (.+)$/gm, '<li class="ml-3 list-disc">$1</li>')
+    // Numbered lists
+    .replace(/^\d+\.\s(.+)$/gm, '<li class="ml-3 list-decimal">$1</li>')
+    // Paragraphs (double newlines)
+    .replace(/\n\n/g, '</p><p class="mt-2">')
+    // Single newlines
+    .replace(/\n/g, '<br />')
+
+  return (
+    <div
+      className="text-sm leading-relaxed prose-sm"
+      dangerouslySetInnerHTML={{ __html: `<p>${html}</p>` }}
+    />
+  )
 }
 
 export default function DebateRoom() {
@@ -101,10 +142,23 @@ export default function DebateRoom() {
     if (!currentDebate) return
     setSimulating(true)
     try {
-      await api.post(`/debates/${currentDebate.id}/simulate`)
-      await fetchDebateDetail(currentDebate.id)
+      // Start simulation (non-blocking: backend runs rounds with AI, we poll)
+      api.post(`/debates/${currentDebate.id}/simulate`).catch(() => {})
+      // Poll for updates every 2 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const d = await api.get<Debate>(`/debates/${currentDebate.id}`)
+          setCurrentDebate(d)
+          updateDebate(d.id, d)
+          if (d.status === 'concluded') {
+            clearInterval(pollInterval)
+            setSimulating(false)
+          }
+        } catch { /* keep polling */ }
+      }, 2000)
+      // Safety timeout after 3 minutes
+      setTimeout(() => { clearInterval(pollInterval); setSimulating(false) }, 180000)
     } catch { /* ignore */ }
-    finally { setSimulating(false) }
   }
 
   const handleSendMessage = async () => {
@@ -217,28 +271,37 @@ export default function DebateRoom() {
                     <div className="h-px flex-1 bg-border" />
                   </div>
                   {/* Messages in this round */}
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {msgs.map((msg) => {
-                      const agentName = msg.agent_name ?? msg.agent_id ?? 'User'
+                      // Find participant to get role
+                      const participant = participants.find((p) => p.agent_id === msg.agent_id)
+                      const agentName = msg.agent_name ?? participant?.role ?? 'User'
+                      const agentRole = participant?.role ?? ''
                       const isUser = !msg.agent_id
-                      const color = isUser ? 'bg-primary' : getAgentColor(msg.agent_id ?? '')
+                      const color = isUser ? 'bg-primary' : getAgentColor(msg.agent_id ?? '', agentRole)
+                      const stanceKey = msg.stance === 'support' ? 'support' : msg.stance === 'oppose' ? 'oppose' : 'neutral'
                       return (
                         <div key={msg.id} className="flex gap-3">
-                          <div className={cn('w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0', color)}>
+                          <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5', color)}>
                             {isUser ? 'U' : getInitials(agentName)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-sm font-medium">{agentName}</span>
-                              <Badge variant={STANCE_BADGE[msg.stance] ?? 'secondary'} className="text-[10px]">
-                                {msg.stance}
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="text-sm font-semibold">{agentName}</span>
+                              {agentRole && (
+                                <span className="text-[10px] text-muted-foreground font-medium bg-secondary px-1.5 py-0.5 rounded">
+                                  {agentRole}
+                                </span>
+                              )}
+                              <Badge variant={STANCE_BADGE[stanceKey] ?? 'secondary'} className="text-[10px]">
+                                {stanceKey}
                               </Badge>
-                              <span className="text-[10px] text-muted-foreground">
+                              <span className="text-[10px] text-muted-foreground ml-auto">
                                 {formatRelative(msg.created_at)}
                               </span>
                             </div>
-                            <div className={cn('rounded-xl p-3 text-sm border', STANCE_COLORS[msg.stance] ?? STANCE_COLORS.neutral)}>
-                              <p className="whitespace-pre-wrap">{msg.content}</p>
+                            <div className={cn('rounded-xl p-4 border', STANCE_COLORS[stanceKey] ?? STANCE_COLORS.neutral)}>
+                              <MarkdownText content={msg.content} />
                             </div>
                           </div>
                         </div>
@@ -337,10 +400,24 @@ export default function DebateRoom() {
                 onClick={handleSimulate}
                 disabled={simulating || currentDebate.status === 'concluded'}
               >
-                <Play size={14} className="mr-1" />
-                {simulating ? 'Running…' : 'Simulate'}
+                {simulating ? (
+                  <>
+                    <Brain size={14} className="mr-1 animate-pulse" />
+                    Thinking…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} className="mr-1" />
+                    AI Debate
+                  </>
+                )}
               </Button>
             </div>
+            {simulating && (
+              <p className="text-[10px] text-muted-foreground text-center">
+                AI agents are generating arguments… messages appear in real-time.
+              </p>
+            )}
 
             {/* Participants */}
             <Card>
@@ -356,15 +433,16 @@ export default function DebateRoom() {
                   <p className="text-xs text-muted-foreground text-center py-2">No participants yet</p>
                 ) : (
                   participants.map((p) => {
-                    const color = getAgentColor(p.agent_id)
+                    const color = getAgentColor(p.agent_id, p.role)
+                    const displayName = (p as any).name || p.role
                     return (
                       <div key={p.id} className="flex items-center gap-2.5">
                         <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white', color)}>
-                          {getInitials(p.role)}
+                          {getInitials(displayName)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate">{p.role}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">{p.specialty}</p>
+                          <p className="text-xs font-medium truncate">{displayName}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{p.role} {p.specialty ? `· ${p.specialty.slice(0, 40)}` : ''}</p>
                         </div>
                       </div>
                     )
@@ -441,8 +519,8 @@ export default function DebateRoom() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm whitespace-pre-wrap bg-secondary rounded-lg p-3">
-                    {currentDebate.conclusion_md}
+                  <div className="bg-secondary rounded-lg p-4">
+                    <MarkdownText content={currentDebate.conclusion_md} />
                   </div>
                 </CardContent>
               </Card>

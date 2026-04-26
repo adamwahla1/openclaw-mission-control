@@ -11,4 +11,5 @@ dependencies = [
     "sse-starlette>=2.0.0",
     "python-multipart>=0.0.9",
     "pydantic-settings>=2.14.0",
+    "httpx>=0.28.1",
 ]
