@@ -1,0 +1,32 @@
+[
+  {
+    "content": "[1A-1] Init React+Vite+TypeScript frontend with Tailwind+shadcn/ui",
+    "id": "1a-1",
+    "status": "completed"
+  },
+  {
+    "content": "[1A-2] Init FastAPI backend with SQLite+migrations",
+    "id": "1a-2",
+    "status": "completed"
+  },
+  {
+    "content": "[1A-3] Create start.sh dual-service launcher",
+    "id": "1a-3",
+    "status": "completed"
+  },
+  {
+    "content": "[1A-4] Build app shell — sidebar nav, header, routing, dark theme",
+    "id": "1a-4",
+    "status": "completed"
+  },
+  {
+    "content": "[1A-5] SQLite schema creation (all Phase 1 tables)",
+    "id": "1a-5",
+    "status": "completed"
+  },
+  {
+    "content": "[1A-6] Gateway Bridge — WS operator client to OpenClaw",
+    "id": "1a-6",
+    "status": "completed"
+  }
+]
