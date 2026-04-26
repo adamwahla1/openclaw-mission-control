@@ -352,6 +352,14 @@ MIGRATIONS = [
     );
     INSERT OR IGNORE INTO schema_version (version) VALUES (1);
     """,
+    # Migration 2: Extend task_messages for orchestrator
+    """
+    ALTER TABLE task_messages ADD COLUMN session_id TEXT;
+    ALTER TABLE task_messages ADD COLUMN role TEXT DEFAULT 'assistant';
+    ALTER TABLE task_messages ADD COLUMN agent_name TEXT;
+    ALTER TABLE task_messages ADD COLUMN tokens INTEGER;
+    INSERT OR REPLACE INTO schema_version (version) VALUES (2);
+    """,
 ]
 
 

@@ -1,0 +1,32 @@
+[
+  {
+    "content": "[phase1b-1] Kanban board UI — 7-column board with DnD, task cards, column headers",
+    "id": "1b-1",
+    "status": "completed"
+  },
+  {
+    "content": "[phase1b-2] Task creation modal + task detail drawer with full fields",
+    "id": "1b-2",
+    "status": "completed"
+  },
+  {
+    "content": "[phase1b-3] Zustand task store + SSE event wiring for live updates",
+    "id": "1b-3",
+    "status": "completed"
+  },
+  {
+    "content": "[phase1b-4] Backend orchestrator service — task decomposition + agent dispatch",
+    "id": "1b-4",
+    "status": "completed"
+  },
+  {
+    "content": "[phase1b-5] Agent Factory — SOUL construction, skill inject, gateway register",
+    "id": "1b-5",
+    "status": "completed"
+  },
+  {
+    "content": "[phase1b-6] Agent Live View — real-time message stream per task",
+    "id": "1b-6",
+    "status": "completed"
+  }
+]
