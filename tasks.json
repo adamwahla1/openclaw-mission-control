@@ -1,32 +1,32 @@
 [
   {
-    "content": "[phase1b-1] Kanban board UI — 7-column board with DnD, task cards, column headers",
-    "id": "1b-1",
+    "content": "[phase2a-1] Projects backend — CRUD, auto-cluster endpoint, files, handovers",
+    "id": "2a-1",
     "status": "completed"
   },
   {
-    "content": "[phase1b-2] Task creation modal + task detail drawer with full fields",
-    "id": "1b-2",
+    "content": "[phase2a-2] Projects frontend — project list, detail page, file browser, handover docs",
+    "id": "2a-2",
     "status": "completed"
   },
   {
-    "content": "[phase1b-3] Zustand task store + SSE event wiring for live updates",
-    "id": "1b-3",
+    "content": "[phase2a-3] Smart auto-bundling — cluster related tasks into projects by tags/keywords",
+    "id": "2a-3",
     "status": "completed"
   },
   {
-    "content": "[phase1b-4] Backend orchestrator service — task decomposition + agent dispatch",
-    "id": "1b-4",
+    "content": "[phase2b-1] Debate backend — create debate, add participants, rounds, messages, convergence",
+    "id": "2b-1",
     "status": "completed"
   },
   {
-    "content": "[phase1b-5] Agent Factory — SOUL construction, skill inject, gateway register",
-    "id": "1b-5",
+    "content": "[phase2b-2] Debate frontend — group chat UI, round indicator, convergence meter, questions",
+    "id": "2b-2",
     "status": "completed"
   },
   {
-    "content": "[phase1b-6] Agent Live View — real-time message stream per task",
-    "id": "1b-6",
+    "content": "[phase2-3] Wire projects + debate into Dashboard and Sidebar",
+    "id": "2-3",
     "status": "completed"
   }
 ]

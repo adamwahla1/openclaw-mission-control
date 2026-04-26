@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database import get_db, close_db
 from services.gateway_bridge import gateway
-from routers import tasks, agents, events, orchestrator
+from routers import tasks, agents, events, orchestrator, projects, debates
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +52,8 @@ app.include_router(tasks.router)
 app.include_router(agents.router)
 app.include_router(events.router)
 app.include_router(orchestrator.router)
+app.include_router(projects.router)
+app.include_router(debates.router)
 
 
 @app.get("/api/health")

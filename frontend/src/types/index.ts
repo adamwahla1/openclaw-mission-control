@@ -46,3 +46,86 @@ export interface TaskMessage {
   tokens: number | null
   created_at: string
 }
+
+export interface Project {
+  id: string
+  name: string
+  description: string | null
+  status: string
+  auto_bundled: number
+  created_at: string
+  updated_at: string
+  // Joined data (when fetched with ?include=tasks)
+  tasks?: Task[]
+  task_count?: number
+  files?: ProjectFile[]
+  handovers?: Handover[]
+}
+
+export interface ProjectFile {
+  id: string
+  project_id: string
+  name: string
+  path: string | null
+  file_type: string | null
+  size_bytes: number | null
+  content: string | null
+  created_at: string
+}
+
+export interface Handover {
+  id: string
+  project_id: string
+  title: string
+  content_md: string
+  agent_id: string | null
+  created_at: string
+}
+
+export interface Debate {
+  id: string
+  title: string
+  topic: string
+  status: string
+  max_rounds: number
+  current_round: number
+  conclusion_md: string | null
+  needs_user_input: number
+  created_at: string
+  updated_at: string
+  // Joined data
+  participants?: DebateParticipant[]
+  messages?: DebateMessage[]
+  questions?: DebateQuestion[]
+  participant_count?: number
+}
+
+export interface DebateParticipant {
+  id: string
+  debate_id: string
+  agent_id: string
+  role: string
+  specialty: string
+}
+
+export interface DebateMessage {
+  id: string
+  debate_id: string
+  agent_id: string | null
+  round_number: number
+  content: string
+  response_to_id: string | null
+  stance: string
+  created_at: string
+  agent_name?: string
+}
+
+export interface DebateQuestion {
+  id: string
+  debate_id: string
+  question: string
+  asked_by_agent_id: string | null
+  user_response: string | null
+  answered_at: string | null
+  created_at: string
+}
