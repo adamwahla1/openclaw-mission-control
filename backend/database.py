@@ -365,6 +365,61 @@ MIGRATIONS = [
     ALTER TABLE tasks ADD COLUMN final_report TEXT;
     INSERT OR REPLACE INTO schema_version (version) VALUES (3);
     """,
+    # Migration 4: Memory neural map + Virtual office
+    """
+    CREATE TABLE IF NOT EXISTS memory_connections (
+        id TEXT PRIMARY KEY,
+        source_memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+        target_memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+        connection_type TEXT NOT NULL DEFAULT 'related',
+        strength REAL DEFAULT 0.5,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS office_rooms (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        room_type TEXT NOT NULL DEFAULT 'desk',
+        x INTEGER DEFAULT 0,
+        y INTEGER DEFAULT 0,
+        width INTEGER DEFAULT 120,
+        height INTEGER DEFAULT 80,
+        metadata TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS office_positions (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        room_id TEXT REFERENCES office_rooms(id) ON DELETE SET NULL,
+        x REAL DEFAULT 0,
+        y REAL DEFAULT 0,
+        state TEXT DEFAULT 'idle',
+        facing TEXT DEFAULT 'down',
+        metadata TEXT DEFAULT '{}',
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS office_events (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+        room_id TEXT REFERENCES office_rooms(id) ON DELETE SET NULL,
+        event_type TEXT NOT NULL,
+        data TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    INSERT OR REPLACE INTO schema_version (version) VALUES (4);
+    """,
+    # Migration 5: Fix missing columns on memories (added after 4 failed to create table)
+    """
+    ALTER TABLE memories ADD COLUMN category TEXT DEFAULT 'general';
+    ALTER TABLE memories ADD COLUMN source TEXT DEFAULT '';
+    ALTER TABLE memories ADD COLUMN decay_score REAL DEFAULT 1.0;
+    ALTER TABLE memories ADD COLUMN connections TEXT DEFAULT '[]';
+    ALTER TABLE memories ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
+    INSERT OR REPLACE INTO schema_version (version) VALUES (5);
+    """,
 ]
 
 

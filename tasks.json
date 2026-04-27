@@ -1,27 +1,27 @@
 [
   {
-    "content": "Create backend/services/ai_client.py — Gemini API wrapper",
+    "content": "Phase 3A: Backend memory system (memories table + CRUD + AI-powered memory extraction)",
     "id": "3A-1",
     "status": "completed"
   },
   {
-    "content": "Create backend/services/debate_engine.py — AI-powered debate with multi-turn context",
+    "content": "Phase 3A: Frontend MemoryMap — D3.js force-directed graph with time slider + decay",
     "id": "3A-2",
-    "status": "completed"
+    "status": "in_progress"
   },
   {
-    "content": "Rewrite debates.py simulate endpoint to use debate_engine",
+    "content": "Phase 3B: Backend office system (rooms, positions, events)",
     "id": "3A-3",
     "status": "completed"
   },
   {
-    "content": "Update frontend DebateRoom to show streaming-style messages",
+    "content": "Phase 3B: Frontend VirtualOffice — Canvas isometric renderer with agent sprites",
     "id": "3A-4",
-    "status": "completed"
+    "status": "pending"
   },
   {
-    "content": "Test end-to-end debate with AI",
+    "content": "Phase 3: TypeScript types + stores + integration testing",
     "id": "3A-5",
-    "status": "in_progress"
+    "status": "pending"
   }
 ]

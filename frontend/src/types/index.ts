@@ -129,3 +129,107 @@ export interface DebateQuestion {
   answered_at: string | null
   created_at: string
 }
+
+// ── Memory ───────────────────────────────────────────────────────────────────
+
+export interface Memory {
+  id: string
+  agent_id: string | null
+  content: string
+  memory_type: 'fact' | 'insight' | 'procedure' | 'experience' | 'preference'
+  category: string
+  source: string
+  importance: number
+  access_count: number
+  decay_score: number
+  tags: string[]
+  connections: string[]
+  created_at: string
+  last_accessed_at: string | null
+  updated_at: string
+  outgoing_connections?: MemoryConnection[]
+  incoming_connections?: MemoryConnection[]
+}
+
+export interface MemoryConnection {
+  id: string
+  source_memory_id: string
+  target_memory_id: string
+  connection_type: 'related' | 'causes' | 'contradicts' | 'supports' | 'derives'
+  strength: number
+  created_at: string
+  target_content?: string
+  target_type?: string
+  source_content?: string
+  source_type?: string
+}
+
+export interface MemoryGraphNode {
+  id: string
+  agent_id: string | null
+  content: string
+  memory_type: string
+  category: string
+  importance: number
+  decay_score: number
+  tags: string[]
+  created_at: string
+}
+
+export interface MemoryGraphLink {
+  source_memory_id: string
+  target_memory_id: string
+  connection_type: string
+  strength: number
+}
+
+export interface MemoryGraphData {
+  nodes: MemoryGraphNode[]
+  links: MemoryGraphLink[]
+}
+
+export interface MemoryStats {
+  total: number
+  by_type: Record<string, number>
+  by_category: Record<string, number>
+  avg_importance: number
+  avg_decay: number
+  connections: number
+}
+
+// ── Office ───────────────────────────────────────────────────────────────────
+
+export interface OfficeRoom {
+  id: string
+  name: string
+  room_type: 'control' | 'desk' | 'meeting' | 'creative' | 'focus' | 'social'
+  x: number
+  y: number
+  width: number
+  height: number
+  metadata: Record<string, unknown>
+  agents?: OfficeAgent[]
+}
+
+export interface OfficeAgent {
+  id: string
+  agent_id: string
+  room_id: string | null
+  x: number
+  y: number
+  state: 'idle' | 'working' | 'thinking' | 'collaborating' | 'reviewing' | 'error'
+  facing: 'up' | 'down' | 'left' | 'right'
+  name: string
+  role: string
+  agent_status: string
+}
+
+export interface OfficeEvent {
+  id: string
+  agent_id: string | null
+  room_id: string | null
+  event_type: string
+  data: Record<string, unknown>
+  agent_name: string | null
+  created_at: string
+}
