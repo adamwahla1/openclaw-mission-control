@@ -1,27 +1,32 @@
 [
   {
-    "content": "Phase 3A: Backend memory system (memories table + CRUD + AI-powered memory extraction)",
-    "id": "3A-1",
+    "content": "[Phase4-1] DB migrations for autopilot, skills, security, costs tables",
+    "id": "p4-1",
     "status": "completed"
   },
   {
-    "content": "Phase 3A: Frontend MemoryMap — D3.js force-directed graph with time slider + decay",
-    "id": "3A-2",
+    "content": "[Phase4-2] Backend routers: autopilot, skills, security, costs",
+    "id": "p4-2",
+    "status": "completed"
+  },
+  {
+    "content": "[Phase4-3] Backend services: autopilot_engine, skill_registry, aegis, cost_tracker",
+    "id": "p4-3",
+    "status": "completed"
+  },
+  {
+    "content": "[Phase4-4] Frontend types + stores for Phase 4 data",
+    "id": "p4-4",
+    "status": "completed"
+  },
+  {
+    "content": "[Phase4-5] Frontend pages: Autopilot, SkillsHub, SecurityAudit, CostDashboard",
+    "id": "p4-5",
+    "status": "completed"
+  },
+  {
+    "content": "[Phase4-6] Wire up + test all endpoints and UI",
+    "id": "p4-6",
     "status": "in_progress"
-  },
-  {
-    "content": "Phase 3B: Backend office system (rooms, positions, events)",
-    "id": "3A-3",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 3B: Frontend VirtualOffice — Canvas isometric renderer with agent sprites",
-    "id": "3A-4",
-    "status": "pending"
-  },
-  {
-    "content": "Phase 3: TypeScript types + stores + integration testing",
-    "id": "3A-5",
-    "status": "pending"
   }
 ]

@@ -233,3 +233,202 @@ export interface OfficeEvent {
   agent_name: string | null
   created_at: string
 }
+
+// ── Autopilot ──────────────────────────────────────────────────────────────
+
+export interface AutopilotRun {
+  id: string
+  name: string
+  objective: string
+  status: 'draft' | 'approved' | 'running' | 'paused' | 'completed' | 'failed'
+  pipeline_config: Record<string, unknown>
+  quality_gates: QualityGate[]
+  steps: AutopilotStep[]
+  current_step: number
+  total_steps: number
+  result: string | null
+  error_message: string | null
+  approval_required: boolean
+  approved_by: string | null
+  approved_at: string | null
+  cost_estimate: number
+  actual_cost: number
+  tokens_used: number
+  created_at: string
+  updated_at: string
+  started_at: string | null
+  completed_at: string | null
+  step_details?: AutopilotStepDetail[]
+}
+
+export interface AutopilotStep {
+  id: string
+  step_type: string
+  name: string
+  description: string
+  status: string
+  order: number
+}
+
+export interface AutopilotStepDetail {
+  id: string
+  run_id: string
+  step_type: string
+  name: string
+  description: string
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped'
+  agent_id: string | null
+  config: Record<string, unknown>
+  input_data: unknown
+  output_data: unknown
+  quality_score: number | null
+  gate_result: QualityGateResult | null
+  tokens_used: number
+  cost: number
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface QualityGate {
+  after_step: number
+  check: string
+  threshold: number
+}
+
+export interface QualityGateResult {
+  check: string
+  threshold: number
+  score: number
+  passed: boolean
+  message: string
+}
+
+export interface PipelineTemplate {
+  name: string
+  steps: number
+  quality_gates: number
+}
+
+// ── Skills ─────────────────────────────────────────────────────────────────
+
+export interface Skill {
+  id: string
+  name: string
+  description: string
+  category: string
+  skill_type: 'internal' | 'external' | 'community'
+  source_url: string
+  version: string
+  prompt_template: string
+  input_schema: Record<string, unknown>
+  output_schema: Record<string, unknown>
+  tags: string[]
+  trust_score: number
+  use_count: number
+  success_count: number
+  avg_latency_ms: number
+  installed_at: string
+  updated_at: string
+  bindings?: SkillBinding[]
+}
+
+export interface SkillBinding {
+  id: string
+  agent_id: string
+  skill_id: string
+  confidence_score: number
+  custom_config: Record<string, unknown>
+  installed_at: string
+  agent_name?: string
+  skill_name?: string
+}
+
+export interface SkillStats {
+  total_skills: number
+  total_bindings: number
+  by_type: Record<string, number>
+  top_skills: { name: string; use_count: number }[]
+}
+
+// ── Security ───────────────────────────────────────────────────────────────
+
+export interface SecurityAudit {
+  id: string
+  audit_type: string
+  target_type: string
+  target_id: string
+  severity: 'info' | 'warning' | 'critical'
+  title: string
+  description: string
+  recommendation: string
+  status: 'open' | 'resolved'
+  detected_at: string
+  resolved_at: string | null
+  resolved_by: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface SecurityStats {
+  open_count: number
+  total_count: number
+  resolved_count: number
+  by_severity: Record<string, number>
+  by_type: Record<string, number>
+}
+
+export interface AgentAuditResult {
+  agent_id: string
+  trust_score: number
+  audits_found: number
+  audits: SecurityAudit[]
+}
+
+// ── Costs ──────────────────────────────────────────────────────────────────
+
+export interface CostRecord {
+  id: string
+  agent_id: string | null
+  task_id: string | null
+  run_id: string | null
+  model: string
+  operation: string
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cost: number
+  currency: string
+  recorded_at: string
+  agent_name?: string
+}
+
+export interface CostSummary {
+  group_by: string
+  days: number
+  total_cost: number
+  total_tokens: number
+  records: number
+  breakdown: CostBreakdownItem[]
+}
+
+export interface CostBreakdownItem {
+  label: string
+  agent_id: string | null
+  record_count: number
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  total_cost: number
+  avg_cost: number
+}
+
+export interface CostDashboard {
+  total_cost: number
+  total_tokens: number
+  days: number
+  by_agent: CostBreakdownItem[]
+  by_model: CostBreakdownItem[]
+  by_day: CostBreakdownItem[]
+  recent_records: CostRecord[]
+}

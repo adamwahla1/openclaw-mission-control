@@ -420,6 +420,141 @@ MIGRATIONS = [
     ALTER TABLE memories ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
     INSERT OR REPLACE INTO schema_version (version) VALUES (5);
     """,
+    # Migration 6: Phase 4 — Autopilot, Skills, Security, Costs
+    """
+    CREATE TABLE IF NOT EXISTS autopilot_runs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT 'Autopilot Run',
+        objective TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        pipeline_config TEXT DEFAULT '{}',
+        quality_gates TEXT DEFAULT '[]',
+        steps TEXT DEFAULT '[]',
+        current_step INTEGER DEFAULT 0,
+        total_steps INTEGER DEFAULT 0,
+        result TEXT,
+        error_message TEXT,
+        approval_required INTEGER DEFAULT 1,
+        approved_by TEXT,
+        approved_at TEXT,
+        cost_estimate REAL DEFAULT 0,
+        actual_cost REAL DEFAULT 0,
+        tokens_used INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        completed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS autopilot_steps (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES autopilot_runs(id) ON DELETE CASCADE,
+        step_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+        config TEXT DEFAULT '{}',
+        input_data TEXT,
+        output_data TEXT,
+        quality_score REAL,
+        gate_result TEXT,
+        tokens_used INTEGER DEFAULT 0,
+        cost REAL DEFAULT 0,
+        error_message TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS skill_registry (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        category TEXT DEFAULT 'general',
+        skill_type TEXT NOT NULL DEFAULT 'internal',
+        source_url TEXT,
+        version TEXT DEFAULT '1.0.0',
+        prompt_template TEXT DEFAULT '',
+        input_schema TEXT DEFAULT '{}',
+        output_schema TEXT DEFAULT '{}',
+        tags TEXT DEFAULT '[]',
+        trust_score REAL DEFAULT 50.0,
+        use_count INTEGER DEFAULT 0,
+        success_count INTEGER DEFAULT 0,
+        avg_latency_ms REAL DEFAULT 0,
+        installed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_skill_bindings (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        skill_id TEXT NOT NULL REFERENCES skill_registry(id) ON DELETE CASCADE,
+        confidence_score REAL DEFAULT 0.5,
+        custom_config TEXT DEFAULT '{}',
+        installed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(agent_id, skill_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS security_audits (
+        id TEXT PRIMARY KEY,
+        audit_type TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'info',
+        title TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        recommendation TEXT DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open',
+        detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+        resolved_at TEXT,
+        resolved_by TEXT,
+        metadata TEXT DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS cost_records (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+        task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+        run_id TEXT REFERENCES autopilot_runs(id) ON DELETE SET NULL,
+        model TEXT DEFAULT '',
+        operation TEXT DEFAULT '',
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
+        total_tokens INTEGER DEFAULT 0,
+        cost REAL NOT NULL DEFAULT 0,
+        currency TEXT DEFAULT 'USD',
+        recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS webhooks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        event_types TEXT DEFAULT '[]',
+        secret TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        last_triggered_at TEXT,
+        failure_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS recurring_tasks (
+        id TEXT PRIMARY KEY,
+        task_template_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+        name TEXT NOT NULL,
+        cron_expression TEXT NOT NULL,
+        next_run_at TEXT NOT NULL,
+        last_run_at TEXT,
+        run_count INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    INSERT OR REPLACE INTO schema_version (version) VALUES (6);
+    """,
 ]
 
 

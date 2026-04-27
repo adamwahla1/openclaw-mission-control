@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database import get_db, close_db
 from services.gateway_bridge import gateway
-from routers import tasks, agents, events, orchestrator, projects, debates, memories, office
+from routers import tasks, agents, events, orchestrator, projects, debates, memories, office, autopilot, skills, security, costs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +56,10 @@ app.include_router(projects.router)
 app.include_router(debates.router)
 app.include_router(memories.router)
 app.include_router(office.router)
+app.include_router(autopilot.router)
+app.include_router(skills.router)
+app.include_router(security.router)
+app.include_router(costs.router)
 
 
 @app.get("/api/health")
