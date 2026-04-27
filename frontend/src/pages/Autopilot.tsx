@@ -296,7 +296,7 @@ function RunDetail({ run, executing, onAction, onExecuteStep, onComplete, onDele
   )
 }
 
-function StepCard({ step, index, isLast }: { step: AutopilotStepDetail; index: number; isLast: boolean }) {
+function StepCard({ step, index: _index, isLast }: { step: AutopilotStepDetail; index: number; isLast: boolean }) {
   const STEP_TYPE_COLORS: Record<string, string> = {
     research: 'text-blue-400 bg-blue-500/10',
     plan: 'text-purple-400 bg-purple-500/10',

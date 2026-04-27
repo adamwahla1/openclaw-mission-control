@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: openclaw-mission-control
+    runtime: python
+    buildCommand: |
+      cd frontend && npm install && npm run build
+      cd ../backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: NODE_VERSION
+        value: "22"
+      - key: SERVE_STATIC
+        value: "1"
+    plan: free

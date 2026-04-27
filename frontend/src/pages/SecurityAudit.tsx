@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Shield, AlertTriangle, AlertCircle, Info, CheckCircle,
-  Search, Scan, Eye, X, Loader2, ChevronDown
+  Scan, Eye, X, Loader2
 } from 'lucide-react'
 import { useSecurityStore } from '../store/securityStore'
 import type { SecurityAudit } from '../types'

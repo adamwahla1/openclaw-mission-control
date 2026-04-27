@@ -101,7 +101,7 @@ class GatewayBridge:
                     max_size=26_214_400,  # 25MB
                     ping_interval=15,
                     ping_timeout=10,
-                    open_timeout=30,
+                    open_timeout=10,
                     close_timeout=5,
                 ) as ws:
                     self._ws = ws

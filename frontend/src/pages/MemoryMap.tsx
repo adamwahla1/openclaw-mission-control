@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as d3 from 'd3'
 import {
-  Brain, Plus, Search, Filter, Clock, Sparkles, Trash2, Link2,
-  ChevronDown, AlertCircle, Activity,
+  Brain, Plus, Clock, Sparkles, Trash2,
+  AlertCircle, Activity,
 } from 'lucide-react'
 import { useMemoryStore } from '@/store/memoryStore'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
@@ -16,7 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
-import type { Memory, MemoryGraphNode, MemoryGraphLink } from '@/types'
+import type { Memory, MemoryGraphNode } from '@/types'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -61,13 +59,13 @@ export default function MemoryMap() {
   const {
     graphData, stats, selectedMemory, loading,
     fetchGraphData, fetchStats, selectMemory,
-    createMemory, deleteMemory, extractMemories, applyDecay,
+    createMemory: _createMemory, deleteMemory, extractMemories: _extractMemories, applyDecay,
   } = useMemoryStore()
 
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [minImportance, setMinImportance] = useState(0.3)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [_searchQuery, _setSearchQuery] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [extractOpen, setExtractOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -175,7 +173,6 @@ export default function MemoryMap() {
     // Node circles with glow
     const defs = svg.append('defs')
     nodes.forEach((d) => {
-      const color = TYPE_COLORS[d.memory_type] || '#64748b'
       const filterId = `glow-${d.id.slice(0, 8)}`
       const filter = defs.append('filter').attr('id', filterId)
       filter.append('feGaussianBlur').attr('stdDeviation', 3).attr('result', 'blur')

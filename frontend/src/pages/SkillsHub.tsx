@@ -290,7 +290,7 @@ export default function SkillsHub() {
 
 // ── Installed Skills View ──────────────────────────────────────────────
 
-function InstalledView({ skills, stats, categories, selectedSkill, loading, filter, typeFilter, catFilter, setFilter, setTypeFilter, setCatFilter, fetchSkill, deleteSkill, bindSkill, unbindSkill, showBind, setShowBind, bindForm, setBindForm, handleBind }: any) {
+function InstalledView({ skills, stats, categories, selectedSkill, loading, filter, typeFilter, catFilter, setFilter, setTypeFilter, setCatFilter, fetchSkill, deleteSkill, bindSkill: _bindSkill, unbindSkill, showBind, setShowBind, bindForm, setBindForm, handleBind }: any) {
   return (
     <div className="flex-1 flex min-h-0">
       {/* Left: Skills list */}

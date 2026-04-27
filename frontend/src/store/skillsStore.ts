@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Skill, SkillStats, SkillBinding } from '../types'
+import type { Skill, SkillStats } from '../types'
 
 interface SkillsState {
   skills: Skill[]

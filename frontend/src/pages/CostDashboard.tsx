@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
-  DollarSign, TrendingUp, Cpu, Clock, Activity
+  DollarSign, Cpu, Clock, Activity
 } from 'lucide-react'
 import { useCostStore } from '../store/costStore'
-import type { CostBreakdownItem, CostRecord } from '../types'
+import type { CostBreakdownItem } from '../types'
 
 export default function CostDashboard() {
   const { dashboard, loading, fetchDashboard } = useCostStore()

@@ -39,7 +39,7 @@ export const useCostStore = create<CostState>((set, get) => ({
       if (filters?.agent_id) params.set('agent_id', filters.agent_id)
       if (filters?.task_id) params.set('task_id', filters.task_id)
       if (filters?.model) params.set('model', filters.model)
-      const qs = params.toString() ? `?${qs}` : ''
+      const qs = params.toString() ? `?${params.toString()}` : ''
       const res = await fetch(`${API}/records${qs}`)
       const records = await res.json()
       set({ records, loading: false })

@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
   Building2, Play, RotateCcw, Users, Activity,
-  Coffee, Monitor, MessageSquare, Lightbulb, Shield,
 } from 'lucide-react'
 import { useOfficeStore } from '@/store/officeStore'
-import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -238,7 +236,7 @@ function drawOffice(
 export default function VirtualOffice() {
   const {
     rooms, agents, events, loading, initialized,
-    fetchRooms, fetchPositions, fetchEvents, initialize, simulate,
+    fetchRooms, fetchPositions, fetchEvents: _fetchEvents, initialize, simulate,
   } = useOfficeStore()
 
   const canvasRef = useRef<HTMLCanvasElement>(null)

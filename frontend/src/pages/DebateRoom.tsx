@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import {
-  MessageSquare, Plus, Play, ChevronRight, Send, HelpCircle,
+  MessageSquare, Plus, ChevronRight, Send, HelpCircle,
   CheckCircle, Users, FileText, Brain, Sparkles,
 } from 'lucide-react'
 import { useDebateStore } from '@/store/debateStore'
@@ -15,7 +15,7 @@ import { Select } from '@/components/ui/select'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
-import type { Debate, DebateMessage, DebateQuestion } from '@/types'
+import type { Debate, DebateMessage } from '@/types'
 
 const STANCE_COLORS: Record<string, string> = {
   support: 'bg-green-500/10 border-green-500/30',
@@ -86,7 +86,7 @@ function MarkdownText({ content }: { content: string }) {
 }
 
 export default function DebateRoom() {
-  const { debates, currentDebate, loading, fetchDebates, setCurrentDebate, updateDebate } = useDebateStore()
+  const { debates, currentDebate, loading: _loading, fetchDebates, setCurrentDebate, updateDebate } = useDebateStore()
   const [createOpen, setCreateOpen] = useState(false)
   const [simulating, setSimulating] = useState(false)
   const [advancing, setAdvancing] = useState(false)

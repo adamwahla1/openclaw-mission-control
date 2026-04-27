@@ -1,9 +1,12 @@
 """OpenClaw Mission Control — FastAPI Backend."""
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from config import settings
 from database import get_db, close_db
@@ -16,6 +19,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Path to built frontend (relative to backend dir → ../frontend/dist)
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+SERVE_STATIC = os.path.isdir(STATIC_DIR) and os.environ.get("SERVE_STATIC", "1") != "0"
 
 
 @asynccontextmanager
@@ -73,6 +80,24 @@ async def health():
         "auth_status": gateway.auth_status,
         "version": "0.1.0",
     }
+
+
+# Serve React frontend in production
+if SERVE_STATIC:
+    # Mount assets subdirectory
+    assets_dir = os.path.join(STATIC_DIR, "assets")
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    # SPA fallback: serve index.html for any non-API, non-static route
+    @app.get("/{path:path}")
+    async def spa_fallback(path: str):
+        # Try to serve a real file first (e.g. favicon, robots.txt)
+        file_path = os.path.join(STATIC_DIR, path)
+        if path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # Otherwise serve index.html for client-side routing
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
 if __name__ == "__main__":
