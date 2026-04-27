@@ -1,32 +1,32 @@
 [
   {
-    "content": "[Phase4-1] DB migrations for autopilot, skills, security, costs tables",
-    "id": "p4-1",
+    "content": "[P4-1] Implement device_auth.py service: Ed25519 keypair loading, v3 signature payload, connect handshake",
+    "id": "1",
     "status": "completed"
   },
   {
-    "content": "[Phase4-2] Backend routers: autopilot, skills, security, costs",
-    "id": "p4-2",
+    "content": "[P4-2] Rewrite gateway_bridge.py with full device auth handshake (challenge-response-connect)",
+    "id": "2",
     "status": "completed"
   },
   {
-    "content": "[Phase4-3] Backend services: autopilot_engine, skill_registry, aegis, cost_tracker",
-    "id": "p4-3",
+    "content": "[P4-3] Add pairing approval flow and auto-device-registration",
+    "id": "3",
     "status": "completed"
   },
   {
-    "content": "[Phase4-4] Frontend types + stores for Phase 4 data",
-    "id": "p4-4",
+    "content": "[P4-4] Update config.py with device auth settings and auto-discovery",
+    "id": "4",
     "status": "completed"
   },
   {
-    "content": "[Phase4-5] Frontend pages: Autopilot, SkillsHub, SecurityAudit, CostDashboard",
-    "id": "p4-5",
+    "content": "[P4-5] Add backend router for gateway status, pairing, device management",
+    "id": "5",
     "status": "completed"
   },
   {
-    "content": "[Phase4-6] Wire up + test all endpoints and UI",
-    "id": "p4-6",
+    "content": "[P4-6] Test end-to-end: start MC backend, verify gateway connection with device auth",
+    "id": "6",
     "status": "completed"
   }
 ]

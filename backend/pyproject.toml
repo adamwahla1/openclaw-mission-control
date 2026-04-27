@@ -12,4 +12,5 @@ dependencies = [
     "python-multipart>=0.0.9",
     "pydantic-settings>=2.14.0",
     "httpx>=0.28.1",
+    "cryptography>=47.0.0",
 ]

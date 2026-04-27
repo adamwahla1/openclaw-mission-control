@@ -9,6 +9,7 @@ from config import settings
 from database import get_db, close_db
 from services.gateway_bridge import gateway
 from routers import tasks, agents, events, orchestrator, projects, debates, memories, office, autopilot, skills, security, costs
+from routers import gateway as gateway_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,6 +61,7 @@ app.include_router(autopilot.router)
 app.include_router(skills.router)
 app.include_router(security.router)
 app.include_router(costs.router)
+app.include_router(gateway_router.router)
 
 
 @app.get("/api/health")
@@ -67,6 +69,8 @@ async def health():
     return {
         "status": "ok",
         "gateway_connected": gateway.connected,
+        "gateway_authenticated": gateway.authenticated,
+        "auth_status": gateway.auth_status,
         "version": "0.1.0",
     }
 
