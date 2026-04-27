@@ -38,6 +38,7 @@ class SkillUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     category: str | None = None
+    skill_type: str | None = None
     prompt_template: str | None = None
     tags: list[str] | None = None
 

@@ -1,4 +1,4 @@
-"""Skills Hub router — skill registry and agent bindings."""
+"""Skills Hub router — skill registry, agent bindings, and external registry integration."""
 import json
 import uuid
 import logging
@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from database import get_db
 from services.aegis import scan_content
+from services.registry_client import search_registries, get_registry_stats, get_skill_from_registry, ALL_REGISTRIES
 from models.phase4 import SkillCreate, SkillUpdate, SkillBindingCreate
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,104 @@ async def skill_stats():
         "total_bindings": total_bindings,
         "by_type": by_type,
         "top_skills": top_skills,
+    }
+
+
+# ── External Registry Integration ─────────────────────────────────────────
+
+@router.get("/registry/search")
+async def search_external_registries(q: str = "", registry: str = "", category: str = ""):
+    """Search across external skill registries (skills.sh, Skills Directory, Anthropic, Hugging Face)."""
+    results = search_registries(query=q, registry=registry, category=category)
+    return {"query": q, "total": len(results), "results": results}
+
+
+@router.get("/registry/stats")
+async def registry_stats():
+    """Get stats for each external registry."""
+    return {"registries": get_registry_stats()}
+
+
+@router.get("/registry/list")
+async def list_registry_skills(registry: str = ""):
+    """List all skills from a specific registry or all registries."""
+    registries = [registry] if registry and registry in ALL_REGISTRIES else list(ALL_REGISTRIES.keys())
+    results = []
+    for reg_name in registries:
+        for skill in ALL_REGISTRIES.get(reg_name, []):
+            results.append(skill.to_dict())
+    results.sort(key=lambda x: x.get("popularity", 0), reverse=True)
+    return {"total": len(results), "results": results}
+
+
+class RegistryInstallRequest:
+    """Request body for installing a skill from an external registry."""
+    def __init__(self, name: str, registry: str, category: str = "general"):
+        self.name = name
+        self.registry = registry
+        self.category = category
+
+
+from pydantic import BaseModel
+
+class RegistryInstallBody(BaseModel):
+    name: str
+    registry: str
+    category: str = "general"
+
+
+@router.post("/registry/install")
+async def install_from_registry(body: RegistryInstallBody):
+    """Install a skill from an external registry into the local Skills Hub."""
+    skill = get_skill_from_registry(body.name, body.registry)
+    if not skill:
+        raise HTTPException(404, f"Skill '{body.name}' not found in registry '{body.registry}'")
+
+    db = await get_db()
+
+    # Check if already installed
+    existing = await db.execute_fetchall(
+        "SELECT id FROM skill_registry WHERE name = ? AND source_url = ?",
+        (skill.name, skill.source_url),
+    )
+    if existing:
+        return {"status": "already_installed", "id": dict(existing[0])["id"]}
+
+    # Security scan on prompt template
+    audits = []
+    if skill.description:
+        audits = await scan_content(skill.description, "skill_description", skill.name)
+
+    skill_id = generate_skill_id()
+
+    await db.execute(
+        """INSERT INTO skill_registry
+        (id, name, description, category, skill_type, source_url, version, prompt_template, input_schema, output_schema, tags, trust_score)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (skill_id, skill.name, skill.description, body.category or skill.category,
+         skill.skill_type, skill.source_url, skill.version,
+         "", "{}", "{}", json.dumps(skill.tags), skill.popularity / 1000.0),  # Rough trust from popularity
+    )
+
+    # Store any security findings
+    for audit in audits:
+        await db.execute(
+            """INSERT INTO security_audits
+            (id, audit_type, target_type, target_id, severity, title, description, recommendation, status, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)""",
+            (audit["id"], audit["audit_type"], "skill", skill_id, audit["severity"],
+             audit["title"], audit["description"], audit["recommendation"],
+             audit.get("metadata", "{}")),
+        )
+
+    await db.commit()
+    return {
+        "status": "installed",
+        "id": skill_id,
+        "name": skill.name,
+        "registry": body.registry,
+        "install_command": skill.install_command,
+        "security_findings": len(audits),
     }
 
 

@@ -7,6 +7,10 @@ interface SkillsState {
   selectedSkill: Skill | null
   categories: { category: string; count: number }[]
   loading: boolean
+  // Registry browser
+  registryResults: any[]
+  registryStats: Record<string, any>
+  registryLoading: boolean
 
   fetchSkills: (category?: string, skill_type?: string) => Promise<void>
   fetchStats: () => Promise<void>
@@ -20,6 +24,9 @@ interface SkillsState {
   deleteSkill: (id: string) => Promise<void>
   bindSkill: (agentId: string, skillId: string, confidence?: number) => Promise<void>
   unbindSkill: (agentId: string, skillId: string) => Promise<void>
+  searchRegistries: (query?: string, registry?: string, category?: string) => Promise<void>
+  fetchRegistryStats: () => Promise<void>
+  installFromRegistry: (name: string, registry: string, category?: string) => Promise<{ status: string; id?: string } | null>
 }
 
 const API = '/api/skills'
@@ -30,6 +37,9 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   selectedSkill: null,
   categories: [],
   loading: false,
+  registryResults: [],
+  registryStats: {},
+  registryLoading: false,
 
   fetchSkills: async (category?: string, skill_type?: string) => {
     set({ loading: true })
@@ -114,5 +124,44 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   unbindSkill: async (agentId, skillId) => {
     await fetch(`${API}/unbind/${agentId}/${skillId}`, { method: 'DELETE' })
     await get().fetchSkill(skillId)
+  },
+
+  searchRegistries: async (query = '', registry = '', category = '') => {
+    set({ registryLoading: true })
+    try {
+      const params = new URLSearchParams()
+      if (query) params.set('q', query)
+      if (registry) params.set('registry', registry)
+      if (category) params.set('category', category)
+      const res = await fetch(`${API}/registry/search?${params}`)
+      const data = await res.json()
+      set({ registryResults: data.results || [], registryLoading: false })
+    } catch {
+      set({ registryLoading: false })
+    }
+  },
+
+  fetchRegistryStats: async () => {
+    try {
+      const res = await fetch(`${API}/registry/stats`)
+      const data = await res.json()
+      set({ registryStats: data.registries || {} })
+    } catch { /* ignore */ }
+  },
+
+  installFromRegistry: async (name, registry, category = 'general') => {
+    try {
+      const res = await fetch(`${API}/registry/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, registry, category }),
+      })
+      const result = await res.json()
+      await get().fetchSkills()
+      await get().fetchStats()
+      return result
+    } catch {
+      return null
+    }
   },
 }))
