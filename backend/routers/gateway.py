@@ -1,10 +1,51 @@
-"""Gateway diagnostics and device auth management router."""
+"""Gateway diagnostics, device auth management, and settings router."""
 from fastapi import APIRouter
+from pydantic import BaseModel
 
+from config import settings, save_gateway_settings, load_gateway_settings
 from services.gateway_bridge import gateway
 from services.device_auth import device_auth
 
 router = APIRouter(prefix="/api/gateway", tags=["gateway"])
+
+
+# ── Settings Models ──────────────────────────────────────────────────────────
+
+class GatewaySettingsRequest(BaseModel):
+    url: str
+    token: str
+
+
+# ── Settings Endpoints ───────────────────────────────────────────────────────
+
+@router.get("/settings")
+async def get_gateway_settings():
+    """Get current gateway URL and token configuration."""
+    persisted = load_gateway_settings()
+    return {
+        "url": settings.gateway_url,
+        "token_configured": bool(settings.gateway_token),
+        "token_preview": settings.gateway_token[:8] + "..." if settings.gateway_token and len(settings.gateway_token) > 8 else "",
+        "source": "persisted" if persisted.get("gateway_url") == settings.gateway_url else "env" if (settings.gateway_url and not persisted.get("gateway_url")) else "auto",
+    }
+
+
+@router.put("/settings")
+async def update_gateway_settings(req: GatewaySettingsRequest):
+    """Update gateway URL and token, then trigger reconnection."""
+    try:
+        await gateway.update_gateway_settings(req.url, req.token)
+        return {
+            "ok": True,
+            "url": settings.gateway_url,
+            "token_configured": bool(settings.gateway_token),
+            "message": "Gateway settings updated. Reconnecting...",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ── Status & Diagnostics ─────────────────────────────────────────────────────
 
 
 @router.get("/status")

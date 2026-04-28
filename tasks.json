@@ -1,31 +1,31 @@
 [
   {
-    "content": "[P4-1] Implement device_auth.py service: Ed25519 keypair loading, v3 signature payload, connect handshake",
+    "content": "[P1-1] Update config.py to support MC_GATEWAY_URL and MC_GATEWAY_TOKEN env vars for remote gateway",
     "id": "1",
     "status": "completed"
   },
   {
-    "content": "[P4-2] Rewrite gateway_bridge.py with full device auth handshake (challenge-response-connect)",
+    "content": "[P1-2] Update device_auth.py to use ~/.mission-control/identity/ for standalone device identity",
     "id": "2",
     "status": "completed"
   },
   {
-    "content": "[P4-3] Add pairing approval flow and auto-device-registration",
+    "content": "[P1-3] Update gateway_bridge.py to pass token in WS URL query string + fix handshake for remote",
     "id": "3",
     "status": "completed"
   },
   {
-    "content": "[P4-4] Update config.py with device auth settings and auto-discovery",
+    "content": "[P1-4] Add gateway settings API endpoints (GET/PUT /api/gateway/settings)",
     "id": "4",
     "status": "completed"
   },
   {
-    "content": "[P4-5] Add backend router for gateway status, pairing, device management",
+    "content": "[P1-5] Add gateway settings UI in frontend (Settings panel)",
     "id": "5",
     "status": "completed"
   },
   {
-    "content": "[P4-6] Test end-to-end: start MC backend, verify gateway connection with device auth",
+    "content": "[P1-6] Test end-to-end: start MC, configure remote gateway, verify connection",
     "id": "6",
     "status": "completed"
   }

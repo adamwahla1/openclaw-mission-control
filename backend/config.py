@@ -1,11 +1,17 @@
+import json
 import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # OpenClaw Gateway
-    gateway_url: str = ""  # Auto-detected from ~/.openclaw/openclaw.json if empty
-    gateway_token: str = ""  # Auto-detected from OpenClaw config if empty
+    # OpenClaw Gateway — set MC_GATEWAY_URL / MC_GATEWAY_TOKEN for remote connection
+    # Falls back to auto-detection from local OpenClaw config
+    gateway_url: str = ""  # e.g. wss://your-machine.tail12345.ts.net:18789
+    gateway_token: str = ""  # Gateway auth token
+
+    # Also accept OPENCLAW_GATEWAY_URL / OPENCLAW_GATEWAY_TOKEN (common convention)
+    # Handled in post-init below
 
     # Server
     host: str = "0.0.0.0"
@@ -25,36 +31,89 @@ settings = Settings()
 app_port = os.environ.get("APP_PORT", "3000")
 settings.port = int(app_port) + 100
 
-# Auto-detect OpenClaw gateway URL and token from config
+# ── Gateway URL / Token Resolution ──────────────────────────────────────────
+# Priority:
+#   1. MC_GATEWAY_URL / MC_GATEWAY_TOKEN (pydantic env vars)
+#   2. OPENCLAW_GATEWAY_URL / OPENCLAW_GATEWAY_TOKEN (convention from reference MCs)
+#   3. Auto-detect from local OpenClaw config (~/.openclaw/openclaw.json)
+#   4. Default to ws://127.0.0.1:18789
+
+if not settings.gateway_url:
+    settings.gateway_url = os.environ.get("OPENCLAW_GATEWAY_URL", "")
+
+if not settings.gateway_token:
+    settings.gateway_token = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
+
+# Auto-detect from local OpenClaw config if still empty
 if not settings.gateway_url or not settings.gateway_token:
     try:
-        import json as _json
-        _oc_home = os.environ.get(
-            "OPENCLAW_HOME",
-            os.path.expanduser("~/.openclaw"),
-        )
-        # Auto-detect actual .openclaw location
-        if not os.path.exists(os.path.join(_oc_home, "openclaw.json")):
-            import glob
-            for p in glob.glob("/data/users/*/.openclaw"):
-                if os.path.exists(os.path.join(p, "openclaw.json")):
-                    _oc_home = p
-                    break
+        _oc_home = os.environ.get("OPENCLAW_HOME", "")
 
-        _oc_config_path = os.path.join(_oc_home, "openclaw.json")
-        if os.path.exists(_oc_config_path):
-            with open(_oc_config_path) as _f:
-                _oc_config = _json.load(_f)
+        _search_paths = []
+        if _oc_home:
+            _search_paths.append(os.path.join(_oc_home, ".openclaw", "openclaw.json"))
+            _search_paths.append(os.path.join(_oc_home, "openclaw.json"))
+        _search_paths.append(os.path.expanduser("~/.openclaw/openclaw.json"))
+
+        _oc_config = None
+        for _p in _search_paths:
+            if os.path.exists(_p):
+                with open(_p) as _f:
+                    _oc_config = json.load(_f)
+                break
+
+        if _oc_config:
             _gw = _oc_config.get("gateway", {})
 
             if not settings.gateway_url:
-                _bind = _gw.get("bind", "loopback")
-                if _bind == "loopback":
-                    settings.gateway_url = "ws://127.0.0.1:18789"
-                else:
-                    settings.gateway_url = f"ws://127.0.0.1:18789"
+                settings.gateway_url = "ws://127.0.0.1:18789"
 
             if not settings.gateway_token:
                 settings.gateway_token = _gw.get("auth", {}).get("token", "")
     except Exception:
         pass
+
+# Ensure gateway_url has a default for local dev
+if not settings.gateway_url:
+    settings.gateway_url = "ws://127.0.0.1:18789"
+
+
+def save_gateway_settings(url: str, token: str) -> None:
+    """Persist gateway settings to a local config file so they survive restarts."""
+    config_dir = Path.home() / ".mission-control"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_file = config_dir / "gateway.json"
+    data = {}
+    if config_file.exists():
+        try:
+            data = json.loads(config_file.read_text())
+        except Exception:
+            pass
+    data["gateway_url"] = url
+    data["gateway_token"] = token
+    config_file.write_text(json.dumps(data, indent=2))
+    # Update runtime settings
+    settings.gateway_url = url
+    settings.gateway_token = token
+
+
+def load_gateway_settings() -> dict:
+    """Load persisted gateway settings from local config file."""
+    config_file = Path.home() / ".mission-control" / "gateway.json"
+    if config_file.exists():
+        try:
+            return json.loads(config_file.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+# On startup, load persisted settings if env vars aren't set
+_persisted = load_gateway_settings()
+if _persisted:
+    if not os.environ.get("MC_GATEWAY_URL") and not os.environ.get("OPENCLAW_GATEWAY_URL"):
+        if _persisted.get("gateway_url"):
+            settings.gateway_url = _persisted["gateway_url"]
+    if not os.environ.get("MC_GATEWAY_TOKEN") and not os.environ.get("OPENCLAW_GATEWAY_TOKEN"):
+        if _persisted.get("gateway_token"):
+            settings.gateway_token = _persisted["gateway_token"]

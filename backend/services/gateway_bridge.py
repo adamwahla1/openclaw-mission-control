@@ -85,6 +85,23 @@ class GatewayBridge:
             return settings.gateway_url
         return device_auth.get_gateway_url()
 
+    def _build_ws_url(self) -> str:
+        """Build the full WebSocket URL with token in query string.
+
+        The reference MC implementations pass the gateway token as a
+        query-string parameter: ws://host:port?token=xxx
+        This is needed for gateway authentication before the handshake.
+        """
+        base_url = self._get_gateway_url()
+        token = settings.gateway_token or device_auth.get_gateway_token()
+
+        if not token:
+            return base_url
+
+        # Append token as query param
+        separator = "&" if "?" in base_url else "?"
+        return f"{base_url}{separator}token={token}"
+
     async def _connection_loop(self):
         """Reconnect loop with exponential backoff."""
         while True:
@@ -95,9 +112,13 @@ class GatewayBridge:
                     await asyncio.sleep(5)
                     continue
 
-                logger.info(f"Connecting to gateway: {url}")
+                # Build WS URL with token in query string
+                ws_url = self._build_ws_url()
+                log_url = ws_url.replace(token, "***") if (token := settings.gateway_token or device_auth.get_gateway_token()) else ws_url
+                logger.info(f"Connecting to gateway: {log_url}")
+
                 async with websockets.connect(
-                    url,
+                    ws_url,
                     max_size=26_214_400,  # 25MB
                     ping_interval=15,
                     ping_timeout=10,
@@ -206,7 +227,7 @@ class GatewayBridge:
         connect_msg = device_auth.build_connect(
             nonce=nonce,
             role="operator",
-            scopes=["operator.read", "operator.write"],
+            scopes=["operator.admin"],
             token_override=auth_token_for_signature,
         )
 
@@ -325,6 +346,8 @@ class GatewayBridge:
                 self._auth_error = error_msg
                 logger.warning(f"Device pairing required: {error_msg}")
                 # Don't raise — stay connected for pairing approval
+                # The gateway may still close the connection, but we set
+                # the status so the UI can show the pairing-required state
             else:
                 self._auth_status = "failed"
                 self._auth_error = error_msg
@@ -490,6 +513,17 @@ class GatewayBridge:
         if session_id:
             params["sessionId"] = session_id
         return await self.rpc("chat.send", params)
+
+    async def update_gateway_settings(self, url: str, token: str) -> None:
+        """Update gateway URL and token, then reconnect."""
+        from config import save_gateway_settings
+        save_gateway_settings(url, token)
+        # Force reconnect with new settings
+        if self._ws:
+            await self._ws.close()
+        self._connected = False
+        self._auth_status = "none"
+        # The connection loop will pick up the new settings
 
     def get_diagnostics(self) -> dict:
         """Return full gateway diagnostics."""

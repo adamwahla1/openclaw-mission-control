@@ -39,6 +39,13 @@ logger = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 
+# Mission Control has its own identity directory, independent of OpenClaw home.
+# This allows connecting to a remote gateway without a local OpenClaw install.
+MC_IDENTITY_DIR = Path.home() / ".mission-control" / "identity"
+MC_IDENTITY_PATH = MC_IDENTITY_DIR / "device.json"
+MC_AUTH_PATH = MC_IDENTITY_DIR / "device-auth.json"
+
+
 def _resolve_openclaw_home() -> Path:
     """Resolve the OpenClaw home directory.
 
@@ -68,10 +75,17 @@ def _resolve_openclaw_home() -> Path:
     return standard
 
 
+# Legacy paths (used as fallback for existing installations)
 OPENCLAW_HOME = _resolve_openclaw_home()
-DEVICE_IDENTITY_PATH = OPENCLAW_HOME / "identity" / "device.json"
-DEVICE_AUTH_PATH = OPENCLAW_HOME / "identity" / "device-auth.json"
-OPENCLAW_CONFIG_PATH = OPENCLAW_HOME / "openclaw.json"
+OC_DEVICE_IDENTITY_PATH = OPENCLAW_HOME / "identity" / "device.json"
+OC_DEVICE_AUTH_PATH = OPENCLAW_HOME / "identity" / "device-auth.json"
+OC_CONFIG_PATH = OPENCLAW_HOME / "openclaw.json"
+# Also check the inner .openclaw subdir where gateway actually stores config
+OC_INNER_CONFIG_PATH = OPENCLAW_HOME / ".openclaw" / "openclaw.json"
+
+# Active paths — prefer MC standalone, fall back to OpenClaw home
+DEVICE_IDENTITY_PATH = MC_IDENTITY_PATH if MC_IDENTITY_PATH.exists() else OC_DEVICE_IDENTITY_PATH
+DEVICE_AUTH_PATH = MC_AUTH_PATH if MC_IDENTITY_PATH.exists() else OC_DEVICE_AUTH_PATH
 
 
 # ── Data Classes ───────────────────────────────────────────────────────────
@@ -303,8 +317,14 @@ def generate_device_identity() -> DeviceIdentity:
     return identity
 
 
-def save_device_identity(identity: DeviceIdentity, path: Path = DEVICE_IDENTITY_PATH) -> None:
-    """Persist device identity to disk."""
+def save_device_identity(identity: DeviceIdentity, path: Path | None = None) -> None:
+    """Persist device identity to disk.
+
+    New identities are always saved to ~/.mission-control/identity/device.json
+    (independent of local OpenClaw installation).
+    """
+    if path is None:
+        path = MC_IDENTITY_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     # Write with restricted permissions
     path.write_text(json.dumps(identity.to_dict(), indent=2))
@@ -312,20 +332,46 @@ def save_device_identity(identity: DeviceIdentity, path: Path = DEVICE_IDENTITY_
     logger.info(f"Device identity saved to {path}")
 
 
-def load_device_identity(path: Path = DEVICE_IDENTITY_PATH) -> Optional[DeviceIdentity]:
-    """Load device identity from disk, or None if not found."""
-    if not path.exists():
-        return None
-    try:
-        data = json.loads(path.read_text())
-        return DeviceIdentity.from_dict(data)
-    except Exception as e:
-        logger.warning(f"Failed to load device identity from {path}: {e}")
-        return None
+def load_device_identity(path: Path | None = None) -> Optional[DeviceIdentity]:
+    """Load device identity from disk, or None if not found.
+
+    Checks MC standalone path first, then falls back to OpenClaw home.
+    """
+    if path is not None:
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text())
+            return DeviceIdentity.from_dict(data)
+        except Exception as e:
+            logger.warning(f"Failed to load device identity from {path}: {e}")
+            return None
+
+    # Try MC standalone path first
+    for candidate in [MC_IDENTITY_PATH, OC_DEVICE_IDENTITY_PATH]:
+        if candidate.exists():
+            try:
+                data = json.loads(candidate.read_text())
+                identity = DeviceIdentity.from_dict(data)
+                logger.info(f"Loaded device identity from {candidate}")
+                return identity
+            except Exception as e:
+                logger.warning(f"Failed to load device identity from {candidate}: {e}")
+    return None
 
 
-def load_device_auth(path: Path = DEVICE_AUTH_PATH) -> Optional[DeviceAuthState]:
+def load_device_auth(path: Path | None = None) -> Optional[DeviceAuthState]:
     """Load stored device auth state (tokens) from disk."""
+    if path is None:
+        # Try MC standalone path first, then OC path
+        for candidate in [MC_AUTH_PATH, OC_DEVICE_AUTH_PATH]:
+            if candidate.exists():
+                try:
+                    data = json.loads(candidate.read_text())
+                    return DeviceAuthState.from_dict(data)
+                except Exception as e:
+                    logger.warning(f"Failed to load device auth from {candidate}: {e}")
+        return None
     if not path.exists():
         return None
     try:
@@ -336,8 +382,10 @@ def load_device_auth(path: Path = DEVICE_AUTH_PATH) -> Optional[DeviceAuthState]
         return None
 
 
-def save_device_auth(auth: DeviceAuthState, path: Path = DEVICE_AUTH_PATH) -> None:
+def save_device_auth(auth: DeviceAuthState, path: Path | None = None) -> None:
     """Persist device auth state to disk."""
+    if path is None:
+        path = MC_AUTH_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     tokens_dict = {}
     for role, tok in auth.tokens.items():
@@ -357,14 +405,27 @@ def save_device_auth(auth: DeviceAuthState, path: Path = DEVICE_AUTH_PATH) -> No
     logger.info(f"Device auth state saved to {path}")
 
 
-def load_gateway_config(path: Path = OPENCLAW_CONFIG_PATH) -> dict:
-    """Load the OpenClaw gateway config file."""
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text())
-    except Exception:
-        return {}
+def load_gateway_config(path: Path | None = None) -> dict:
+    """Load the OpenClaw gateway config file.
+
+    Checks inner .openclaw subdir first (where gateway actually writes),
+    then the top-level openclaw.json.
+    """
+    if path is not None:
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            return {}
+
+    for candidate in [OC_INNER_CONFIG_PATH, OC_CONFIG_PATH]:
+        if candidate.exists():
+            try:
+                return json.loads(candidate.read_text())
+            except Exception:
+                continue
+    return {}
 
 
 # ── Connect Message Builder ───────────────────────────────────────────────
@@ -527,24 +588,14 @@ class DeviceAuthManager:
         return []
 
     def get_gateway_url(self) -> str:
-        """Get gateway WebSocket URL from config or default."""
-        gw_config = self.gateway_config.get("gateway", {})
-        bind = gw_config.get("bind", "loopback")
-
-        # Check for explicit URL in env/config
-        env_url = os.environ.get("MC_GATEWAY_URL", "")
-        if env_url:
-            return env_url
-
-        # Default based on bind mode
-        if bind == "loopback":
-            return "ws://127.0.0.1:18789"
-        return "ws://127.0.0.1:18789"
+        """Get gateway WebSocket URL from config settings."""
+        from config import settings
+        return settings.gateway_url
 
     def get_gateway_token(self) -> str:
-        """Get gateway auth token from config."""
-        gw_config = self.gateway_config.get("gateway", {})
-        return gw_config.get("auth", {}).get("token", "")
+        """Get gateway auth token from config settings."""
+        from config import settings
+        return settings.gateway_token
 
     def get_auth_mode(self) -> str:
         """Get gateway auth mode from config."""
