@@ -80,10 +80,21 @@ class GatewayBridge:
         self._connected = False
 
     def _get_gateway_url(self) -> str:
-        """Resolve gateway URL from settings or device auth auto-discovery."""
-        if settings.gateway_url:
-            return settings.gateway_url
-        return device_auth.get_gateway_url()
+        """Resolve gateway URL from settings or device auth auto-discovery.
+
+        Normalizes http(s):// URLs to ws(s):// since websockets.connect()
+        requires a WebSocket scheme.
+        """
+        url = settings.gateway_url or device_auth.get_gateway_url()
+        if not url:
+            return url
+        # Convert http(s) to ws(s)
+        if url.startswith("https://"):
+            url = "wss://" + url[len("https://"):]
+        elif url.startswith("http://"):
+            url = "ws://" + url[len("http://"):]
+        # Strip trailing slash so query-param joining is clean
+        return url.rstrip("/")
 
     def _build_ws_url(self) -> str:
         """Build the full WebSocket URL with token in query string.
@@ -223,25 +234,51 @@ class GatewayBridge:
             auth_token_for_signature = ""
             auth_dict = None
 
-        # Build connect message with the correct token for the signature
-        connect_msg = device_auth.build_connect(
-            nonce=nonce,
-            role="operator",
-            scopes=["operator.admin"],
-            token_override=auth_token_for_signature,
-        )
+        # Determine whether this is a local or remote gateway
+        base_url = self._get_gateway_url()
+        is_local = any(h in base_url.lower() for h in ("localhost", "127.0.0.1", "::1"))
 
-        # Set the auth object
-        if auth_dict:
-            connect_msg["params"]["auth"] = auth_dict
-
-        logger.info(
-            f"Connect: clientId=cli role=operator scopes={connect_msg['params']['scopes']} "
-            f"auth={'token' if auth_dict else 'none'}"
-        )
+        # Build connect message: token-only for remote gateways (avoids device-pairing
+        # requirements), full device auth with Ed25519 signature for local gateways.
+        if gw_token and not is_local:
+            connect_msg = {
+                "type": "req",
+                "id": str(uuid.uuid4()),
+                "method": "connect",
+                "params": {
+                    "minProtocol": 3,
+                    "maxProtocol": 3,
+                    "client": {
+                        "id": "cli",
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "deviceFamily": "desktop",
+                        "mode": "cli",
+                    },
+                    "role": "operator",
+                    "scopes": ["operator.admin"],
+                    "auth": {"token": gw_token},
+                },
+            }
+            logger.info(
+                f"Connect: clientId=cli role=operator scopes=['operator.admin'] auth=token-only (remote)"
+            )
+        else:
+            connect_msg = device_auth.build_connect(
+                nonce=nonce,
+                role="operator",
+                scopes=["operator.admin"],
+                token_override=auth_token_for_signature,
+            )
+            if auth_dict:
+                connect_msg["params"]["auth"] = auth_dict
+            logger.info(
+                f"Connect: clientId=cli role=operator scopes={connect_msg['params']['scopes']} "
+                f"auth={'token' if auth_dict else 'none'}"
+            )
 
         await ws.send(json.dumps(connect_msg))
-        logger.info("Sent connect message with device auth signature")
+        logger.info("Sent connect message")
 
         # Step 3: Wait for response
         raw = await asyncio.wait_for(ws.recv(), timeout=15)

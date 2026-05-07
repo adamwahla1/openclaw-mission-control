@@ -1,32 +1,37 @@
 [
   {
-    "content": "[P1-1] Update config.py to support MC_GATEWAY_URL and MC_GATEWAY_TOKEN env vars for remote gateway",
     "id": "1",
-    "status": "completed"
+    "content": "Commit current uncommitted changes (gateway_bridge.py, start.sh)",
+    "status": "in_progress"
   },
   {
-    "content": "[P1-2] Update device_auth.py to use ~/.mission-control/identity/ for standalone device identity",
     "id": "2",
-    "status": "completed"
+    "content": "Read existing handover docs to understand current coverage",
+    "status": "pending"
   },
   {
-    "content": "[P1-3] Update gateway_bridge.py to pass token in WS URL query string + fix handshake for remote",
     "id": "3",
-    "status": "completed"
+    "content": "Create comprehensive CHANGELOG.md covering all phases from day 1",
+    "status": "pending"
   },
   {
-    "content": "[P1-4] Add gateway settings API endpoints (GET/PUT /api/gateway/settings)",
     "id": "4",
-    "status": "completed"
+    "content": "Update HANDOVER.md master index with all docs + session context",
+    "status": "pending"
   },
   {
-    "content": "[P1-5] Add gateway settings UI in frontend (Settings panel)",
     "id": "5",
-    "status": "completed"
+    "content": "Update/add handover docs: 02-session-changes with full history, 09-this-session.md",
+    "status": "pending"
   },
   {
-    "content": "[P1-6] Test end-to-end: start MC, configure remote gateway, verify connection",
     "id": "6",
-    "status": "completed"
+    "content": "Update README with current state and known issues",
+    "status": "pending"
+  },
+  {
+    "id": "7",
+    "content": "Git add, commit all docs, push to origin/master",
+    "status": "pending"
   }
 ]

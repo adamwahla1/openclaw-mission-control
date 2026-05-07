@@ -18,60 +18,17 @@ echo "🚀 Starting OpenClaw Mission Control"
 echo "   Frontend: http://localhost:$VITE_PORT"
 echo "   Backend:  http://localhost:$BACKEND_PORT"
 
-# ── Start local OpenClaw Gateway (v2026.4.25) if not already running ──
-if ! python3 -c "import socket; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1',18789)); s.close()" 2>/dev/null; then
-    # Find the openclaw binary (prefer v2026.4.25 which has pricing.bootstrap fix)
-    OPENCLAW_BIN=""
-    for p in \
-        "$(dirname $0)/../.oc-v25/node_modules/.bin/openclaw" \
-        /data/users/LJTvWmv8w3YZfYb6dMwkwprDPJv1/Workspace/.oc-v25/node_modules/.bin/openclaw \
-        "$(dirname $0)/../.openclaw-install/node_modules/.bin/openclaw"; do
-        if [ -x "$p" ]; then
-            OPENCLAW_BIN="$p"
-            break
-        fi
-    done
-
-    if [ -n "$OPENCLAW_BIN" ]; then
-        # Create minimal config if none exists
-        if [ ! -f "$OPENCLAW_HOME/.openclaw/openclaw.json" ]; then
-            mkdir -p "$OPENCLAW_HOME/.openclaw"
-            GW_TOKEN=$(python3 -c "import secrets; print(secrets.token_hex(20))")
-            cat > "$OPENCLAW_HOME/.openclaw/openclaw.json" << CFGEOF
-{
-  "gateway": {
-    "mode": "local",
-    "bind": "loopback",
-    "auth": { "mode": "token", "token": "$GW_TOKEN" },
-    "pricing": { "bootstrap": false }
-  },
-  "meta": { "lastTouchedVersion": "2026.4.25" },
-  "models": { "mode": "merge", "providers": {} },
-  "agents": { "defaults": {}, "list": [{ "id": "dev", "default": true, "identity": { "name": "Dev Agent", "theme": "assistant", "emoji": "🤖" } }] },
-  "plugins": { "deny": ["bonjour", "phone-control", "talk-voice"], "entries": {} }
-}
-CFGEOF
-            echo "   Gateway config created (token: ${GW_TOKEN:0:8}...)"
-        fi
-
-        echo "🦞 Starting OpenClaw Gateway..."
-        OPENCLAW_HOME="$OPENCLAW_HOME" OPENCLAW_DISABLE_BONJOUR=1 \
-            $OPENCLAW_BIN gateway run --bind loopback --port 18789 --allow-unconfigured --verbose &
-
-        echo "⏳ Waiting for OpenClaw Gateway (up to 60s)..."
-        for i in $(seq 1 60); do
-            if python3 -c "import socket; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1',18789)); s.close()" 2>/dev/null; then
-                echo "✅ Gateway ready"
-                break
-            fi
-            sleep 1
-        done
-    else
-        echo "⚠️  OpenClaw CLI not found. Gateway features disabled."
-        echo "   Install with: npm install openclaw@2026.4.25"
-    fi
+# ── Skip local OpenClaw Gateway when remote is configured ──
+# Check for persisted remote gateway config
+_REMOTE_GW=""
+_MC_CFG="$HOME/.mission-control/gateway.json"
+if [ -f "$_MC_CFG" ]; then
+    _REMOTE_GW=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('gateway_url',''))" "$_MC_CFG" 2>/dev/null)
+fi
+if [ -n "$MC_GATEWAY_URL" ] || [ -n "$OPENCLAW_GATEWAY_URL" ] || [ -n "$_REMOTE_GW" ]; then
+    echo "🔗 Using remote OpenClaw Gateway (local gateway skipped)"
 else
-    echo "✅ OpenClaw Gateway already running on port 18789"
+    echo "⚠️  No remote gateway configured. Set gateway URL in Settings or via MC_GATEWAY_URL."
 fi
 
 # ── Start backend ──
