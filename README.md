@@ -28,6 +28,16 @@ export MC_GATEWAY_TOKEN="xxxxx"
 ./start.sh
 ```
 
+**Remote gateway notes:**
+- MC auto-converts `https://` URLs to `wss://` for WebSocket compatibility.
+- MC uses **token-only auth** for remote gateways (no device pairing needed).
+- Your token must have `operator.read` scope on the gateway side for full
+  functionality (agents list, channels, etc.). If you see
+  `"missing scope: operator.read"`, add scopes on the gateway, then click
+  "Save & Reconnect" in MC Settings.
+- When a remote gateway is configured, `start.sh` skips the local OpenClaw
+  gateway bootstrap (no 60s wait).
+
 ---
 
 ## What this is
@@ -242,8 +252,10 @@ openclaw-mission-control/
 | `Module 'chokidar' not found` | Ignore -- non-fatal warning from OpenClaw `memory-core` plugin |
 | Gateway boots at 40 % CPU with no response | Upgrade to OpenClaw **v2026.4.25** and set `pricing.bootstrap: false` |
 | Gateway dies silently | Add `--verbose` to the `openclaw gateway run` command |
-| `DEVICE_PAIRING_REQUIRED` | Device must be approved on the gateway side. Use Settings -> Reconnect after approval. |
-| MC frontend shows `disconnected` | Check `/api/gateway/status` -- token may be wrong or gateway not reachable |
+| `DEVICE_PAIRING_REQUIRED` (local gateway) | Device must be approved on the gateway side. Use Settings -> Reconnect after approval. |
+| `DEVICE_PAIRING_REQUIRED` (remote gateway) | MC now uses **token-only auth** for remote gateways. If you still see this, the gateway URL may be misclassified as local. Check that it does not contain `localhost` or `127.0.0.1`. |
+| `"missing scope: operator.read"` | The gateway token has no scopes assigned. Add `operator.read` (and `operator.write`, `operator.admin`) to the token on the **gateway side** (not MC). MC auto-reconnects once scopes are added. |
+| MC frontend shows `disconnected` | Check `/api/gateway/status` -- token may be wrong, URL may need `https://` → `wss://` conversion, or gateway not reachable |
 | Changes to gateway settings lost | They are saved to `~/.mission-control/gateway.json`. Make sure `start.sh` doesn't overwrite them. |
 
 Full troubleshooting, runbook, and bug notes are in `docs/handover/`.
@@ -314,6 +326,9 @@ docs/handover/
 |-- 06-settings-ui.md            # Settings page API + token resolution chain
 |-- 07-runbook.md                # health checks, logs, common ops
 |-- 08-open-issues.md            # pending work + suggested next steps
+|-- 09-this-session.md           # latest session: remote gateway fixes
+
+CHANGELOG.md                      # complete feature history from day 1
 ```
 
 ---

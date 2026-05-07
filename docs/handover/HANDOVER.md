@@ -1,6 +1,6 @@
 # OpenClaw Mission Control — Handover Document
 
-**Date:** 2026-04-28
+**Date:** 2026-05-07 (updated)
 **Repo:** https://github.com/adamwahla1/openclaw-mission-control
 **Branch:** `master`
 **Project root:** `/data/users/LJTvWmv8w3YZfYb6dMwkwprDPJv1/Workspace/openclaw_mission_control`
@@ -17,6 +17,8 @@ the supporting documents in this folder:
 - [`06-settings-ui.md`](./06-settings-ui.md) — New Settings page, API endpoints, token resolution chain
 - [`07-runbook.md`](./07-runbook.md) — Start/stop, health checks, common ops
 - [`08-open-issues.md`](./08-open-issues.md) — Known issues and pending work
+- [`09-this-session.md`](./09-this-session.md) — Current session: remote gateway fixes, token-only auth
+- [`CHANGELOG.md`](../../CHANGELOG.md) — Complete feature history from day 1
 
 ---
 
@@ -73,7 +75,45 @@ OpenClaw gateway, and added a real Settings UI to switch between them.
    is expected behaviour — the device must be approved on the gateway
    side before it can connect.
 
-Verified working state at end of session:
+## 3. What we did in the **2026-05-07 session**
+
+Fixed remote gateway connection for atomicbot.ai hosted OpenClaw.
+
+**Problem:** MC connected to `wss://7e4b2041f4.atomicbot.ai` but the gateway
+kept closing with `DEVICE_PAIRING_REQUIRED` (1008 policy violation). The
+user had no way to approve the pairing on the hosted gateway.
+
+**Root cause:** MC was using the full Ed25519 device-auth handshake (v3
+protocol with signed connect message). This requires device pairing approval
+on the gateway. But the atomicbot.ai gateway uses **token-only auth** —
+clients just send `auth: {token: "..."}` in the connect payload, no
+signature needed.
+
+**Fixes:**
+1. `gateway_bridge.py` — auto-convert `https://` URLs to `wss://` for
+   WebSocket compatibility.
+2. `gateway_bridge.py` — detect local vs remote gateway. Remote gateways
+   use token-only connect (simple `auth: {token}` payload). Local gateways
+   still use full Ed25519 device auth for security.
+3. `start.sh` — detect persisted remote gateway config and skip the 60s
+   local OpenClaw gateway bootstrap (eliminates startup delay).
+
+**Current state:**
+- ✅ Connected and authenticated to `wss://7e4b2041f4.atomicbot.ai`
+- ✅ `health` and `status` RPCs work
+- ⚠️ `agents.list`, `channels.status`, and other operator methods fail
+  with `"missing scope: operator.read"` — the token has **no scopes**.
+  This is a **gateway-side configuration issue** (not MC code).
+  The user needs to add `operator.read` (and ideally `operator.write`,
+  `operator.admin`) scopes to the token via their atomicbot.ai control
+  panel or OpenClaw CLI on the host.
+
+See [`09-this-session.md`](./09-this-session.md) for full details,
+including testing scripts and handoff checklist.
+
+---
+
+Verified working state at end of **2026-04-28** session:
 
 ```
 GET /health

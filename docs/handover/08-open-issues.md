@@ -1,17 +1,36 @@
 # 08 — Open issues & next steps
 
+**Updated:** 2026-05-07
+
 ## 8.1 Open issues
 
-### A. VPS device pairing not yet approved
-- **State:** MC connects to `wss://openclaw-npt3.srv1624328.hstgr.cloud`,
-  Ed25519 auth succeeds, gateway returns `DEVICE_PAIRING_REQUIRED`.
-- **Owner:** ops (the user) — needs admin action on the VPS.
+### A. Remote gateway token lacks operator scopes
+- **State:** MC connects successfully to `wss://7e4b2041f4.atomicbot.ai`
+  via token-only auth. `health` and `status` RPCs work. But any method
+  requiring `operator.read` scope fails with:
+  `{"code": "INVALID_REQUEST", "message": "missing scope: operator.read"}`
+- **Root cause:** The gateway auth token has `"scopes": []` in the
+  `hello-ok` response. This is a gateway-side configuration issue.
+- **Owner:** user / atomicbot.ai hosting support.
 - **Action items:**
-  1. `GET /api/gateway/device` from MC → grab `device_id` and public
-     key.
-  2. SSH into VPS or use VPS-side admin UI; approve that device id.
-  3. Click Reconnect in MC's Settings page.
-- **Code work needed in MC:** none.
+  1. Add `operator.read`, `operator.write`, and `operator.admin` scopes
+     to the token on the gateway side (via atomicbot.ai control panel,
+     OpenClaw CLI, or gateway config).
+  2. In MC Settings, click "Save & Reconnect" (no restart needed).
+  3. Verify by checking `/api/gateway/status-rpc` → should show agents.
+- **Code work needed in MC:** Settings UI could show a warning banner
+  when connected but `auth.scopes` is empty, with instructions.
+  Also: add a "Test Connection" button that calls `health` or `status`
+  and reports scope status before saving.
+
+### B. (Historical) VPS device pairing — RESOLVED by token-only auth
+- **Previous state:** MC connected to `wss://openclaw-npt3.srv1624328.hstgr.cloud`,
+  Ed25519 auth succeeded, gateway returned `DEVICE_PAIRING_REQUIRED`.
+- **Resolution:** The 2026-05-07 session changed MC to use **token-only auth**
+  for remote gateways (non-localhost URLs). This bypasses the device pairing
+  requirement entirely. The old VPS endpoint is no longer the active target;
+  the user is now connecting to `7e4b2041f4.atomicbot.ai`.
+- **See:** `09-this-session.md` and `CHANGELOG.md` commit `b01f5da`.
 
 ### B. No model providers configured on the local gateway
 - **State:** `models.providers = {}` in
