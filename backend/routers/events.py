@@ -1,8 +1,10 @@
-"""SSE event stream + gateway status endpoints."""
+"""SSE event stream and compatibility status endpoints."""
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+
+from database import get_db
+from services.runtime_registry import runtime_registry
 from services.sse_broadcaster import sse
-from services.gateway_bridge import gateway
 
 router = APIRouter(tags=["events"])
 
@@ -26,36 +28,37 @@ async def event_stream():
 
 
 @router.get("/api/gateway/status")
-async def gateway_status():
-    """Current gateway connection status."""
+async def gateway_status_compat():
+    """Compatibility status for older gateway-shaped frontend callers."""
+    db = await get_db()
+    runtime = await runtime_registry.status(db)
     return {
-        "connected": gateway.connected,
-        "server": gateway.server_info,
+        "connected": runtime["ready"],
+        "auth_status": runtime["active_runtime"],
+        "server": {"runtime": runtime["active_runtime"]},
+        "runtime": runtime,
     }
 
 
 @router.get("/api/gateway/health")
-async def gateway_health():
-    """Proxy gateway health check."""
-    if not gateway.connected:
-        return {"status": "disconnected"}
-    try:
-        return await gateway.get_health()
-    except Exception as e:
-        return {"status": "error", "detail": str(e)}
+async def gateway_health_compat():
+    """Compatibility health check backed by the active runtime."""
+    db = await get_db()
+    runtime = await runtime_registry.status(db)
+    return {"status": "ok" if runtime["ready"] else "error", "runtime": runtime}
 
 
 @router.get("/api/gateway/models")
-async def gateway_models():
-    """List models available via gateway."""
-    if not gateway.connected:
-        return []
-    return await gateway.list_models()
+async def gateway_models_compat():
+    """Compatibility models endpoint backed by model configs."""
+    db = await get_db()
+    rows = await db.execute_fetchall("SELECT * FROM model_configs ORDER BY purpose")
+    return [dict(row) for row in rows]
 
 
 @router.get("/api/gateway/sessions")
-async def gateway_sessions():
-    """List sessions from gateway."""
-    if not gateway.connected:
-        return []
-    return await gateway.list_sessions()
+async def gateway_sessions_compat():
+    """Compatibility sessions endpoint backed by native sessions."""
+    db = await get_db()
+    rows = await db.execute_fetchall("SELECT * FROM sessions ORDER BY created_at DESC LIMIT 100")
+    return [dict(row) for row in rows]
