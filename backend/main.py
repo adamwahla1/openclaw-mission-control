@@ -10,9 +10,12 @@ from fastapi.responses import FileResponse
 
 from config import settings
 from database import get_db, close_db
-from services.gateway_bridge import gateway
+from services.native_schema import ensure_native_runtime_schema
+from services.runtime_registry import runtime_registry
 from routers import tasks, agents, events, orchestrator, projects, debates, memories, office, autopilot, skills, security, costs
 from routers import gateway as gateway_router
+from routers import runtime as runtime_router
+from routers import providers, runs, approvals
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,20 +32,21 @@ SERVE_STATIC = os.path.isdir(STATIC_DIR) and os.environ.get("SERVE_STATIC", "1")
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Mission Control backend...")
-    await get_db()
-    logger.info("Database initialized")
-    await gateway.start()
-    logger.info(f"Gateway bridge started → {settings.gateway_url}")
+    db = await get_db()
+    await ensure_native_runtime_schema(db)
+    logger.info("Database and native runtime schema initialized")
+    await runtime_registry.start(db)
+    logger.info("Runtime registry started")
     yield
     # Shutdown
-    await gateway.stop()
+    await runtime_registry.stop()
     await close_db()
     logger.info("Shutdown complete")
 
 
 app = FastAPI(
     title="OpenClaw Mission Control",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -68,17 +72,26 @@ app.include_router(autopilot.router)
 app.include_router(skills.router)
 app.include_router(security.router)
 app.include_router(costs.router)
+app.include_router(runtime_router.router)
+app.include_router(providers.router)
+app.include_router(runs.router)
+app.include_router(approvals.router)
 app.include_router(gateway_router.router)
 
 
 @app.get("/api/health")
 async def health():
+    db = await get_db()
+    runtime = await runtime_registry.status(db)
     return {
         "status": "ok",
-        "gateway_connected": gateway.connected,
-        "gateway_authenticated": gateway.authenticated,
-        "auth_status": gateway.auth_status,
-        "version": "0.1.0",
+        "runtime_ready": runtime["ready"],
+        "active_runtime": runtime["active_runtime"],
+        # Compatibility fields for older UI/API callers.
+        "gateway_connected": False,
+        "gateway_authenticated": False,
+        "auth_status": runtime["active_runtime"],
+        "version": "0.2.0",
     }
 
 
