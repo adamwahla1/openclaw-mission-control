@@ -1,5 +1,6 @@
 """Human approval endpoints for supervised native runtime actions."""
 import json
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -45,10 +46,10 @@ async def list_approvals(status: str | None = "pending"):
 @router.post("", status_code=201)
 async def create_approval(body: ApprovalCreateRequest):
     db = await get_db()
-    approval_id = f"approval-{body.action_type.replace('.', '-')}-{body.target_id or 'manual'}"
+    approval_id = f"approval-{uuid.uuid4().hex[:10]}"
     await db.execute(
         """
-        INSERT OR REPLACE INTO approvals
+        INSERT INTO approvals
             (id, action_type, target_type, target_id, requested_by, status, run_id, tool_name,
              risk_level, request_payload, created_at)
         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, datetime('now'))
@@ -83,7 +84,7 @@ async def reject(approval_id: str, body: ApprovalDecisionRequest):
 
 async def _decide(approval_id: str, status: str, body: ApprovalDecisionRequest):
     db = await get_db()
-    existing = await _get(db, approval_id)
+    await _get(db, approval_id)
     await db.execute(
         """
         UPDATE approvals
@@ -95,8 +96,11 @@ async def _decide(approval_id: str, status: str, body: ApprovalDecisionRequest):
     await db.commit()
     approval = await _get(db, approval_id)
     await sse.broadcast(f"approval.{status}", approval)
-    if status == "approved" and approval.get("run_id"):
-        await runtime_registry.native.resume_run(db, approval["run_id"])
+    if approval.get("run_id"):
+        if status == "approved":
+            await runtime_registry.native.resume_run(db, approval["run_id"])
+        elif status == "rejected":
+            await runtime_registry.native.cancel_run(db, approval["run_id"])
     return approval
 
 
