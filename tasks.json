@@ -1,37 +1,42 @@
 [
   {
-    "content": "Commit current uncommitted changes (gateway_bridge.py, start.sh)",
-    "id": "1",
+    "content": "Reframe Mission Control documentation around native runtime as the default architecture",
+    "id": "native-docs-1",
     "status": "completed"
   },
   {
-    "content": "Read existing handover docs to understand current coverage",
-    "id": "2",
+    "content": "Update handover master index and architecture docs for RuntimeRegistry, native runtime, provider layer, runs, approvals, and tools",
+    "id": "native-docs-2",
     "status": "completed"
   },
   {
-    "content": "Create comprehensive CHANGELOG.md covering all phases from day 1",
-    "id": "3",
+    "content": "Mark OpenClaw setup and remote gateway docs as legacy optional adapter context",
+    "id": "native-docs-3",
     "status": "completed"
   },
   {
-    "content": "Update HANDOVER.md master index with all docs + session context",
-    "id": "4",
+    "content": "Document OpenRouter browser prototype test without storing real API keys",
+    "id": "native-docs-4",
     "status": "completed"
   },
   {
-    "content": "Update/add handover docs: 02-session-changes with full history, 09-this-session.md",
-    "id": "5",
+    "content": "Update README and CHANGELOG to native-runtime-first framing",
+    "id": "native-docs-5",
     "status": "completed"
   },
   {
-    "content": "Update README with current state and known issues",
-    "id": "6",
-    "status": "completed"
+    "content": "Run real FastAPI end-to-end browser test against native runtime after dependency setup is clean",
+    "id": "native-next-1",
+    "status": "pending"
   },
   {
-    "content": "Git add, commit all docs, push to origin/master",
-    "id": "7",
-    "status": "completed"
+    "content": "Replace stale Dashboard copy that still tells users to connect to OpenClaw",
+    "id": "native-next-2",
+    "status": "pending"
+  },
+  {
+    "content": "Deepen Project Builder from prototype into real Pydantic AI and LangGraph execution",
+    "id": "native-next-3",
+    "status": "pending"
   }
 ]

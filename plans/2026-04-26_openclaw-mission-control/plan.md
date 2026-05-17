@@ -1,4 +1,23 @@
-# OpenClaw Mission Control — Master Plan v2
+# SUPERSEDED - Historical OpenClaw-First Plan
+
+This plan is preserved as historical context only.
+
+It no longer describes the current product direction.
+
+Current direction as of 2026-05-17:
+
+- Mission Control is native-runtime-first.
+- OpenClaw is optional adapter support, not the required execution layer.
+- OpenRouter is the first provider.
+- Pydantic AI and LangGraph are the intended native runtime foundations.
+- The current source of truth is `docs/handover/HANDOVER.md`.
+
+Do not implement new work from this plan unless the user explicitly asks to
+return to the OpenClaw-first architecture.
+
+---
+
+# OpenClaw Mission Control - Master Plan v2
 
 ## Context
 

@@ -1,109 +1,247 @@
-# 06 — Settings UI & Token resolution chain
+# 06 - Settings UI, Runtime, Providers, Models, Tools
 
-## 6.1 The page
+The Settings page is no longer only a gateway URL/token page. It is now the
+control room for the native runtime prototype.
 
-`frontend/src/pages/Settings.tsx` (~330 lines).
+File:
 
-Layout (top to bottom):
-
-1. **Header:** title + connection-status pill (green = connected &
-   authenticated, amber = connected but pairing required, red =
-   disconnected).
-2. **Connection card:**
-   - Gateway URL input (e.g. `wss://gateway.example.com` or
-     `ws://127.0.0.1:18789`)
-   - Gateway Token input with show/hide eye toggle
-   - Token preview line (e.g. `rwOVXP2p…`) and source badge
-     (`env` / `persisted` / `auto`)
-   - "Save & Reconnect" + "Reconnect" buttons
-3. **Diagnostics card:** device id, has identity, has operator
-   token, scopes, gateway auth mode, last auth error, server info.
-4. **Quick Setup Guide:** numbered list with the four steps below.
-
-## 6.2 API endpoints used
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/api/gateway/settings` | Read URL + token preview + source |
-| PUT | `/api/gateway/settings` | Save URL+token, trigger reconnect |
-| GET | `/api/gateway/status` | Live connection diagnostics (poll 5 s) |
-| GET | `/api/gateway/device` | Device identity status |
-| POST | `/api/gateway/reconnect` | Force reconnect (no settings change) |
-| GET | `/api/gateway/pairing/pending` | (admin) list pending pairings |
-| POST | `/api/gateway/pairing/approve/{id}` | (admin) approve a pairing |
-| POST | `/api/gateway/pairing/reject/{id}` | (admin) reject a pairing |
-| GET | `/api/gateway/agents` | Live agents from connected gateway |
-| GET | `/api/gateway/status-rpc` | Live status RPC roundtrip |
-
-## 6.3 Token resolution chain (definitive)
-
-When MC needs to know which gateway URL/token to use, the chain is:
-
-```
-1.  $MC_GATEWAY_URL / $MC_GATEWAY_TOKEN
-        ↓ (if blank)
-2.  $OPENCLAW_GATEWAY_URL / $OPENCLAW_GATEWAY_TOKEN
-        ↓ (if blank)
-3.  ~/.mission-control/gateway.json
-        ↓ (if blank or missing)
-4.  Local OpenClaw config: ~/.openclaw/openclaw.json
-       → gateway.auth.token
-       → URL defaults to ws://127.0.0.1:18789
-        ↓ (if local config missing)
-5.  Default: ws://127.0.0.1:18789, no token
+```text
+frontend/src/pages/Settings.tsx
 ```
 
-Step 1–2 are read at process start via pydantic `BaseSettings`.
-Step 3 is loaded *after* by `load_gateway_settings()` and only
-applied to fields that are still empty. Step 4 is the legacy
-auto-detect path that supports co-installation with OpenClaw on the
-same machine.
+---
 
-The "source" string returned by `GET /api/gateway/settings` is:
-- `"env"` — env var supplied a value
-- `"persisted"` — persisted file supplied a value
-- `"auto"` — neither; auto-detected or default
+## 1. Page Purpose
 
-## 6.4 What `Save & Reconnect` does, step by step
+The Settings page should answer these questions for the user:
 
-1. Frontend sends `PUT /api/gateway/settings` with `{url, token}`.
-2. Router calls `gateway.update_gateway_settings(url, token)`.
-3. `update_gateway_settings`:
-   - Calls `save_gateway_settings(url, token)` →
-     writes `~/.mission-control/gateway.json` and updates
-     `settings.gateway_url/token` in memory.
-   - Closes the existing WS (`self._ws.close()`).
-   - Sets `_connected = False`, `_auth_status = "none"`.
-4. The `_connection_loop` task wakes from its `await self._ws.recv()`,
-   sees the connection is closed, loops, calls `_get_gateway_url()` /
-   `_build_ws_url()` (which now read the new settings), and opens a
-   new WS.
-5. Frontend re-fetches `/api/gateway/settings` and
-   `/api/gateway/status`, the status pill updates.
+1. Which runtime is active?
+2. Is Mission Control ready to run agents locally?
+3. Is OpenRouter configured?
+4. Which models should be used for planning, building, reviewing, cheap work,
+   and long-context work?
+5. Which tools are enabled?
+6. Which tools require approval?
+7. Are any approvals waiting?
+8. What recent runs happened?
 
-## 6.5 What `Reconnect` does (without changing settings)
+The page should not make OpenClaw feel required.
 
-Just hits `POST /api/gateway/reconnect`. The endpoint replies "ok"
-immediately; the actual reconnect is handled by the connection
-loop's normal "if disconnected, retry" path. Useful after the user
-approves the device on the VPS side.
+---
 
-(Note: the current `/reconnect` endpoint doesn't proactively close
-the WS — it just reports status. If a stronger reconnect is needed
-in future, mirror what `update_gateway_settings` does without the
-save step.)
+## 2. Runtime Section
 
-## 6.6 Security notes
+Backend routes:
 
-- Token is **never** returned by GET. Only first 8 chars + `...`.
-- Token in PUT body is sent in plain JSON — fine over HTTPS,
-  important to remember when running MC over plain HTTP locally
-  (don't share localhost across users).
-- WS URL has the token in the query string. This means:
-  - Anything that logs the URL must redact (we replace with `***`
-    in `_connection_loop` logger).
-  - Reverse proxies in front of MC should also redact query
-    strings in their access logs.
-- Device private key lives at
-  `~/.mission-control/identity/device.json` with default file mode.
-  Consider tightening to `0600` in a future hardening pass.
+- `GET /api/runtime/status`
+- `PUT /api/runtime/active`
+
+Expected runtime options:
+
+- `native`
+- `openclaw`
+
+Default:
+
+- `native`
+
+UI behavior:
+
+- Show native runtime as the recommended/default path.
+- Show OpenClaw as optional integration.
+- If switching to OpenClaw, warn that it requires gateway setup.
+
+Backend behavior:
+
+- `native` should not require gateway connection.
+- `openclaw` should start/use OpenClaw adapter.
+
+---
+
+## 3. Providers Section
+
+Backend routes:
+
+- `GET /api/providers`
+- `POST /api/providers`
+- `POST /api/providers/openrouter/test`
+- `GET /api/providers/openrouter/models`
+
+First provider:
+
+- OpenRouter
+
+UI capabilities:
+
+- Enter API key.
+- Save API key.
+- Test API key before trusting it.
+- Show connected/disconnected state.
+- Show model count when model discovery works.
+
+Security rules:
+
+- Never display the full API key after save.
+- Never write a real key into docs.
+- Never commit test keys.
+- Use placeholder examples only.
+
+Example placeholder:
+
+```text
+sk-or-v1-REPLACE_ME
+```
+
+Important testing note:
+
+A user-provided OpenRouter key was used in browser testing. That key should
+be rotated/revoked after testing because it was pasted into a chat.
+
+---
+
+## 4. Models Section
+
+Backend routes:
+
+- `GET /api/model-configs`
+- `POST /api/model-configs`
+
+Seeded model purposes:
+
+- `planner`
+- `builder`
+- `reviewer`
+- `cheap_fast`
+- `long_context`
+
+Why purposes matter:
+
+Different parts of Project Builder need different strengths.
+
+Example:
+
+- Planner may need a strong reasoning model.
+- Builder may need a strong coding model.
+- Reviewer may need a careful critic model.
+- Cheap/fast can handle small summaries.
+- Long-context can inspect large transcripts or docs.
+
+Current model config should support:
+
+- provider
+- model id
+- routing policy
+- enabled flag
+- optional metadata
+
+---
+
+## 5. Tools Section
+
+Backend routes:
+
+- `GET /api/tools`
+- `PATCH /api/tools/{tool_id}`
+
+Seeded tools:
+
+- `repo.read`
+- `repo.search`
+- `repo.draft_patch`
+- `tests.run`
+- `report.summarize`
+
+Each tool has:
+
+- name
+- description
+- risk level
+- approval mode
+- enabled flag
+- schema metadata
+
+Approval posture:
+
+- Read-only tools can be automatic.
+- Write tools should require approval by default.
+- Destructive, external, or financial tools should always be treated with
+  extra caution.
+
+The Settings UI should make this easy to understand without using too much
+technical language.
+
+---
+
+## 6. Approvals Section
+
+Backend routes:
+
+- `GET /api/approvals`
+- `POST /api/approvals/{id}/approve`
+- `POST /api/approvals/{id}/reject`
+
+Approval statuses:
+
+- `pending`
+- `approved`
+- `rejected`
+
+Native Project Builder behavior:
+
+- Draft write-risk action creates approval.
+- Run pauses.
+- UI shows approval.
+- Approve resumes run.
+- Reject cancels run.
+
+Good UI behavior:
+
+- Show what action is being requested.
+- Show risk level.
+- Show run/task context.
+- Make approve/reject actions clear.
+
+---
+
+## 7. Recent Runs Section
+
+Backend routes:
+
+- `GET /api/runs`
+- `GET /api/runs/{id}`
+- `GET /api/runs/{id}/events`
+
+Purpose:
+
+- Let the user see if the runtime is doing real work.
+- Provide a trail back to run timeline and final report.
+
+The dedicated Runs page is still the better place to inspect full details.
+
+---
+
+## 8. Legacy Gateway Settings
+
+Old Settings UI managed:
+
+- gateway URL
+- gateway token
+- device identity
+- reconnect
+- pairing diagnostics
+
+Those concepts are now legacy/optional OpenClaw adapter settings.
+
+Do not remove them blindly if OpenClaw adapter support is still desired.
+But do not place them above the native runtime/provider controls.
+
+Correct product hierarchy:
+
+1. Runtime
+2. Providers
+3. Models
+4. Tools
+5. Approvals
+6. Runs
+7. Optional OpenClaw adapter details
+
