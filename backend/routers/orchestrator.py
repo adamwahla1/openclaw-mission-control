@@ -25,7 +25,7 @@ class FactoryRequest(BaseModel):
 
 @router.post("/dispatch")
 async def dispatch_task(body: DispatchRequest):
-    """Dispatch a task to the orchestrator — creates agent, session, sends prompt."""
+    """Dispatch a task into the native Project Builder runtime."""
     try:
         result = await orchestrator.dispatch(body.task_id)
         return result
@@ -47,34 +47,41 @@ async def get_dispatch_status(task_id: str):
     task = dict(row)
     task["tags"] = json.loads(task.get("tags", "[]"))
 
-    # Count messages
     async with db.execute(
         "SELECT COUNT(*) as cnt FROM task_messages WHERE task_id = ?", (task_id,)
     ) as cursor:
         msg_count = (await cursor.fetchone())["cnt"]
 
-    # Count subtasks
     async with db.execute(
         "SELECT COUNT(*) as cnt FROM tasks WHERE parent_task_id = ?", (task_id,)
     ) as cursor:
         subtask_count = (await cursor.fetchone())["cnt"]
 
-    active = task_id in orchestrator._active_dispatches
+    run = None
+    if task.get("gateway_session_id"):
+        async with db.execute("SELECT * FROM runs WHERE id = ?", (task["gateway_session_id"],)) as cursor:
+            run_row = await cursor.fetchone()
+        run = dict(run_row) if run_row else None
+
+    active = task_id in orchestrator._active_dispatches or (run and run.get("status") in {"queued", "running", "awaiting_approval"})
 
     return {
         "task_id": task_id,
         "status": task["status"],
         "assigned_agent_id": task.get("assigned_agent_id"),
         "session_id": task.get("gateway_session_id"),
+        "run_id": task.get("gateway_session_id"),
+        "run_status": run.get("status") if run else None,
+        "current_step": run.get("current_step") if run else None,
         "message_count": msg_count,
         "subtask_count": subtask_count,
-        "dispatch_active": active,
+        "dispatch_active": bool(active),
     }
 
 
 @router.post("/agents/factory")
 async def run_agent_factory(body: FactoryRequest):
-    """Manually trigger the Agent Factory to create an agent."""
+    """Manually trigger the native Agent Factory to create an agent."""
     task_context = {
         "title": body.title,
         "description": body.description,
