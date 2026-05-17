@@ -11,6 +11,7 @@ import {
   Shield,
   DollarSign,
   Settings,
+  Activity,
   Wifi,
   WifiOff,
   ChevronLeft,
@@ -31,6 +32,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, section: 'core' },
   { label: 'Tasks', path: '/tasks', icon: <KanbanSquare size={20} />, section: 'core' },
   { label: 'Projects', path: '/projects', icon: <FolderKanban size={20} />, section: 'core' },
+  { label: 'Runs', path: '/runs', icon: <Activity size={20} />, section: 'core' },
   { label: 'Debate Room', path: '/debate', icon: <MessageSquare size={20} />, section: 'core' },
   { label: 'Memory Map', path: '/memory', icon: <Brain size={20} />, section: 'intelligence' },
   { label: 'Virtual Office', path: '/office', icon: <Building2 size={20} />, section: 'intelligence' },
@@ -71,7 +73,6 @@ export function Sidebar({ gatewayConnected }: SidebarProps) {
           collapsed ? 'w-16' : 'w-56'
         )}
       >
-        {/* Logo */}
         <div className="flex items-center gap-3 px-4 h-14 border-b">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
             MC
@@ -83,7 +84,6 @@ export function Sidebar({ gatewayConnected }: SidebarProps) {
           )}
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2 px-2">
           {Object.entries(grouped).map(([section, items]) => (
             <div key={section} className="mb-3">
@@ -121,9 +121,7 @@ export function Sidebar({ gatewayConnected }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Footer */}
         <div className="border-t p-2 space-y-1">
-          {/* Gateway status */}
           <div
             className={cn(
               'flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs',
@@ -137,12 +135,11 @@ export function Sidebar({ gatewayConnected }: SidebarProps) {
             )}
             {!collapsed && (
               <span className={gatewayConnected ? 'text-green-500' : 'text-red-500'}>
-                {gatewayConnected ? 'Gateway Connected' : 'Gateway Offline'}
+                {gatewayConnected ? 'Runtime Ready' : 'Runtime Offline'}
               </span>
             )}
           </div>
 
-          {/* Collapse toggle */}
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="flex items-center justify-center w-full py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"

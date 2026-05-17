@@ -1,139 +1,155 @@
-# 03 — OpenClaw bugs & workarounds
+# 03 - Legacy OpenClaw Bugs And Workarounds
 
-These are bugs we encountered in OpenClaw itself (not in MC) while
-trying to get a local gateway running. Documented so the next person
-doesn't re-debug them from scratch.
+This file is legacy adapter context.
 
-## 3.1 v2026.4.24 — CPU spin on startup
+Mission Control no longer needs OpenClaw to boot or run the native prototype.
+Read this file only if you are maintaining the optional OpenClaw runtime
+adapter.
 
-**Symptom:** `openclaw gateway run` process pegs ~40–45 % CPU
-indefinitely. No HTTP response on port 18789. No log output. Process
-never reaches "ready".
+Do not treat these issues as blockers for native runtime work.
 
-**Root cause:** Pricing fetch in the boot path runs synchronously on
-the Node.js event loop and blocks on a network call that never
-completes in a sandbox without external network. Any later async
-work (including the WS server bind) never gets scheduled.
+---
 
-**Workaround (v2026.4.24):** Not viable — there was no config flag to
-skip the pricing fetch in this version. Best option was to upgrade.
+## 1. Why This File Still Exists
 
-**Fix (v2026.4.25):** New config key `gateway.pricing.bootstrap`. Set
-to `false` to skip. Our `start.sh` writes this into the bootstrap
-config:
+Older Mission Control sessions integrated with OpenClaw Gateway over WebSocket.
+That work produced useful knowledge:
+
+- which OpenClaw version could start locally
+- which flags avoided startup problems
+- why remote gateways needed token-only auth
+- why device pairing was hard to operate
+
+The knowledge is preserved because OpenClaw may remain an optional integration.
+But it is no longer the primary architecture.
+
+---
+
+## 2. OpenClaw v2026.4.24 CPU Spin
+
+Symptom:
+
+- `openclaw gateway run` used high CPU.
+- Gateway never became ready.
+- Port `18789` did not respond.
+- Logs were not useful.
+
+Suspected root cause:
+
+- Pricing bootstrap blocked the Node.js event loop in the sandbox.
+
+Workaround:
+
+- Use OpenClaw v2026.4.25.
+- Set:
 
 ```json
-"gateway": { "pricing": { "bootstrap": false } }
+{
+  "gateway": {
+    "pricing": {
+      "bootstrap": false
+    }
+  }
+}
 ```
 
-After upgrading to v2026.4.25 with this set, gateway reaches "ready"
-in ~40 s (mostly plugin loading).
+Native runtime relevance:
 
-**Install command we used:**
-```bash
-mkdir -p /data/users/LJTvWmv8w3YZfYb6dMwkwprDPJv1/Workspace/.oc-v25
-cd /data/users/LJTvWmv8w3YZfYb6dMwkwprDPJv1/Workspace/.oc-v25
-npm i openclaw@2026.4.25
-```
-
-Binary then lives at
-`/data/.../.oc-v25/node_modules/.bin/openclaw`.
+- None unless testing optional OpenClaw adapter.
 
 ---
 
-## 3.2 Silent death without `--verbose`
+## 3. Silent Death Without Verbose Logs
 
-**Symptom:** v2026.4.25 process exits within ~2 s of launch, no
-output on stdout/stderr, exit code 0. `nohup` log empty.
+Symptom:
 
-**Cause:** Default log level swallows the error message ("Bonjour
-plugin failed to bind") and the process treats it as fatal.
+- Gateway process exited quickly.
+- No useful stdout/stderr.
 
-**Workaround:** Always run with `--verbose`. Then the underlying
-plugin error is visible and we can deny the failing plugin.
+Workaround:
 
 ```bash
-$OPENCLAW_BIN gateway run --bind loopback --port 18789 \
-              --allow-unconfigured --verbose
+openclaw gateway run --bind loopback --port 18789 --allow-unconfigured --verbose
 ```
+
+Native runtime relevance:
+
+- None unless running OpenClaw adapter.
 
 ---
 
-## 3.3 Bonjour / mDNS plugin crashes
+## 4. Bonjour/mDNS Plugin Crash
 
-**Symptom:** With verbose logging, gateway crashes at boot with
-"Bonjour: Could not bind to 5353" or similar mDNS errors. Sandbox
-doesn't allow multicast.
+Symptom:
 
-**Workaround (two layers, both belt-and-braces):**
+- Gateway crashed trying to bind mDNS/Bonjour.
 
-1. Env var:
-   ```bash
-   OPENCLAW_DISABLE_BONJOUR=1
-   ```
-2. Config-level deny list:
-   ```json
-   "plugins": { "deny": ["bonjour", "phone-control", "talk-voice"] }
-   ```
+Workaround:
 
-`phone-control` and `talk-voice` are also denied because they pull
-in OS-level audio/CallKit deps that are absent in the sandbox.
+```bash
+OPENCLAW_DISABLE_BONJOUR=1
+```
+
+And in OpenClaw config:
+
+```json
+{
+  "plugins": {
+    "deny": ["bonjour", "phone-control", "talk-voice"]
+  }
+}
+```
+
+Native runtime relevance:
+
+- None.
 
 ---
 
-## 3.4 `chokidar` missing for `memory-core` plugin
+## 5. Missing `chokidar` For Memory Plugin
 
-**Symptom:** Gateway log line:
-```
+Symptom:
+
+```text
 plugin memory-core failed to load: Cannot find module 'chokidar'
 ```
-Non-fatal — gateway continues to start. But memory-related plugins
-won't watch FS changes.
 
-**Workaround:** Either `npm i chokidar` in the OpenClaw install dir,
-or ignore. We left it ignored because MC's memory feature stores its
-own data in MC's SQLite, not via the OC memory-core plugin.
+Effect:
 
----
+- Non-fatal for gateway startup.
+- OpenClaw memory plugin may not watch files.
 
-## 3.5 Token regenerated by gateway on first run
+Native runtime relevance:
 
-**Symptom:** We wrote a token into `openclaw.json`, started the
-gateway, MC tried to connect with that token → 401. Gateway log
-showed a *different* token in its bind line.
-
-**Cause (suspected):** When `--allow-unconfigured` is used and the
-config token field is empty/short, the gateway generates a new one
-and writes it back to `openclaw.json`.
-
-**Workaround:** After the gateway has started, re-read the token
-from `/tmp/oc-home/.openclaw/openclaw.json` and use *that*. Our
-`start.sh` writes a 40-char random hex up front so the gateway
-accepts it without regenerating. Confirmed by reading the file
-after boot — token is unchanged.
+- Low. Mission Control native memory should live in Mission Control data
+  stores, not OpenClaw plugin state.
 
 ---
 
-## 3.6 VPS device pairing requirement
+## 6. Token Handling Differences
 
-Not a bug — by design. Documented in [05-remote-gateway-vps.md](./05-remote-gateway-vps.md).
+Earlier integration learned:
+
+- Some OpenClaw gateway versions expect token in WebSocket query string.
+- Remote/shared gateways may use token-only auth instead of Ed25519 pairing.
+- Local gateways used Ed25519 device identity.
+
+Native runtime relevance:
+
+- Only matters if keeping `gateway_bridge.py` working as an optional adapter.
 
 ---
 
-## 3.7 Things that did NOT work
+## 7. Keep Or Remove?
 
-For posterity, things we tried that turned out to be dead ends:
+Keep this file while:
 
-1. **Running `openclaw configure` non-interactively** — there's no
-   `--non-interactive` flag; it always wants TTY input. Use
-   `--allow-unconfigured` instead and write `openclaw.json`
-   directly.
-2. **Running v2026.4.24 with `OPENCLAW_SKIP_PRICING=1`** — that env
-   var doesn't exist in v24. Only the config key in v25 works.
-3. **Sharing identity with a host OpenClaw install** — fragile across
-   sandbox boundaries; switched to standalone MC identity (see
-   [02-session-changes.md §2.2](./02-session-changes.md)).
-4. **Putting the token in the WS Authorization header** — our first
-   attempt. Some gateway versions accept it, but the reference MC
-   repos universally pass it as `?token=...` in the URL, and the
-   v2026.4.25 gateway only honours the query string. We switched.
+- `OpenClawRuntimeAdapter` exists.
+- `gateway_bridge.py` exists.
+- Users may want to connect Mission Control to OpenClaw.
+
+Remove this file only after:
+
+- Product decision is made to delete OpenClaw support entirely.
+- Code and UI references have also been removed.
+

@@ -1,4 +1,4 @@
-"""OpenClaw Mission Control — FastAPI Backend."""
+"""Mission Control - FastAPI Backend."""
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -10,9 +10,12 @@ from fastapi.responses import FileResponse
 
 from config import settings
 from database import get_db, close_db
-from services.gateway_bridge import gateway
+from services.native_schema import ensure_native_runtime_schema
+from services.runtime_registry import runtime_registry
 from routers import tasks, agents, events, orchestrator, projects, debates, memories, office, autopilot, skills, security, costs
 from routers import gateway as gateway_router
+from routers import runtime as runtime_router
+from routers import providers, runs, approvals, tools
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,33 +23,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Path to built frontend (relative to backend dir → ../frontend/dist)
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 SERVE_STATIC = os.path.isdir(STATIC_DIR) and os.environ.get("SERVE_STATIC", "1") != "0"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     logger.info("Starting Mission Control backend...")
-    await get_db()
-    logger.info("Database initialized")
-    await gateway.start()
-    logger.info(f"Gateway bridge started → {settings.gateway_url}")
+    db = await get_db()
+    await ensure_native_runtime_schema(db)
+    logger.info("Database and native runtime schema initialized")
+    await runtime_registry.start(db)
+    logger.info("Runtime registry started")
     yield
-    # Shutdown
-    await gateway.stop()
+    await runtime_registry.stop()
     await close_db()
     logger.info("Shutdown complete")
 
 
 app = FastAPI(
-    title="OpenClaw Mission Control",
-    version="0.1.0",
+    title="Mission Control",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -55,7 +55,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers
 app.include_router(tasks.router)
 app.include_router(agents.router)
 app.include_router(events.router)
@@ -68,35 +67,39 @@ app.include_router(autopilot.router)
 app.include_router(skills.router)
 app.include_router(security.router)
 app.include_router(costs.router)
+app.include_router(runtime_router.router)
+app.include_router(providers.router)
+app.include_router(runs.router)
+app.include_router(approvals.router)
+app.include_router(tools.router)
 app.include_router(gateway_router.router)
 
 
 @app.get("/api/health")
 async def health():
+    db = await get_db()
+    runtime = await runtime_registry.status(db)
     return {
         "status": "ok",
-        "gateway_connected": gateway.connected,
-        "gateway_authenticated": gateway.authenticated,
-        "auth_status": gateway.auth_status,
-        "version": "0.1.0",
+        "runtime_ready": runtime["ready"],
+        "active_runtime": runtime["active_runtime"],
+        "gateway_connected": runtime.get("openclaw", {}).get("connected", False),
+        "gateway_authenticated": runtime.get("openclaw", {}).get("authenticated", False),
+        "auth_status": runtime["active_runtime"],
+        "version": "0.2.0",
     }
 
 
-# Serve React frontend in production
 if SERVE_STATIC:
-    # Mount assets subdirectory
     assets_dir = os.path.join(STATIC_DIR, "assets")
     if os.path.isdir(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
-    # SPA fallback: serve index.html for any non-API, non-static route
     @app.get("/{path:path}")
     async def spa_fallback(path: str):
-        # Try to serve a real file first (e.g. favicon, robots.txt)
         file_path = os.path.join(STATIC_DIR, path)
         if path and os.path.isfile(file_path):
             return FileResponse(file_path)
-        # Otherwise serve index.html for client-side routing
         return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 

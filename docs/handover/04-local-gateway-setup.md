@@ -1,56 +1,84 @@
-# 04 — Local OpenClaw Gateway setup
+# 04 - Legacy Local OpenClaw Gateway Setup
 
-How the local gateway is wired. `start.sh` does this automatically;
-this doc is for understanding / manual recovery.
+This file is only for optional OpenClaw adapter testing.
 
-## 4.1 Install
+Native Mission Control does not require this setup.
 
-OpenClaw v2026.4.25 (the version with the `pricing.bootstrap` fix):
+If your goal is to test the native runtime, OpenRouter, Project Builder runs,
+approvals, or the Runs page, skip this file and use `07-runbook.md`.
 
-```bash
-INSTALL_DIR=/data/users/LJTvWmv8w3YZfYb6dMwkwprDPJv1/Workspace/.oc-v25
-mkdir -p "$INSTALL_DIR"
-cd "$INSTALL_DIR"
-npm i openclaw@2026.4.25
+---
+
+## 1. When To Use This File
+
+Use this only when:
+
+- active runtime is intentionally set to `openclaw`
+- you are debugging `OpenClawRuntimeAdapter`
+- you are debugging `gateway_bridge.py`
+- you are checking backward compatibility with old gateway-based flows
+
+Do not use this for normal development.
+
+---
+
+## 2. Local Gateway Version
+
+The last known workable local gateway version was:
+
+```text
+openclaw@2026.4.25
 ```
 
-After install:
-```
-.oc-v25/
-└── node_modules/
-    └── .bin/
-        └── openclaw          ← the CLI
+It was selected because it supports:
+
+```json
+{
+  "gateway": {
+    "pricing": {
+      "bootstrap": false
+    }
+  }
+}
 ```
 
-## 4.2 Home directory & config
+That setting avoids an older CPU-spin startup problem.
+
+---
+
+## 3. Minimal Local Gateway Config
+
+Use an isolated home:
 
 ```bash
 export OPENCLAW_HOME=/tmp/oc-home
-mkdir -p $OPENCLAW_HOME/.openclaw
+mkdir -p "$OPENCLAW_HOME/.openclaw"
 ```
 
-Note the **double-nested** `.openclaw` — the gateway's
-`OPENCLAW_HOME` is the *parent* dir; the gateway then reads/writes
-`OPENCLAW_HOME/.openclaw/openclaw.json`.
+Config path:
 
-Bootstrap `openclaw.json`:
+```text
+/tmp/oc-home/.openclaw/openclaw.json
+```
+
+Example config:
 
 ```json
 {
   "gateway": {
     "mode": "local",
     "bind": "loopback",
-    "auth": { "mode": "token", "token": "<40-char hex>" },
-    "pricing": { "bootstrap": false }
+    "auth": {
+      "mode": "token",
+      "token": "REPLACE_WITH_RANDOM_TOKEN"
+    },
+    "pricing": {
+      "bootstrap": false
+    }
   },
-  "meta": { "lastTouchedVersion": "2026.4.25" },
-  "models": { "mode": "merge", "providers": {} },
-  "agents": {
-    "defaults": {},
-    "list": [{
-      "id": "dev", "default": true,
-      "identity": { "name": "Dev Agent", "theme": "assistant", "emoji": "🤖" }
-    }]
+  "models": {
+    "mode": "merge",
+    "providers": {}
   },
   "plugins": {
     "deny": ["bonjour", "phone-control", "talk-voice"],
@@ -59,85 +87,41 @@ Bootstrap `openclaw.json`:
 }
 ```
 
-Generate a random token:
+Generate a token:
+
 ```bash
-python3 -c "import secrets; print(secrets.token_hex(20))"
+python -c "import secrets; print(secrets.token_hex(20))"
 ```
 
-## 4.3 Run
+---
+
+## 4. Run Command
 
 ```bash
 OPENCLAW_HOME=/tmp/oc-home OPENCLAW_DISABLE_BONJOUR=1 \
-  /data/.../.oc-v25/node_modules/.bin/openclaw \
-  gateway run --bind loopback --port 18789 \
-              --allow-unconfigured --verbose \
-  > /tmp/openclaw-gateway.log 2>&1 &
+  openclaw gateway run \
+  --bind loopback \
+  --port 18789 \
+  --allow-unconfigured \
+  --verbose
 ```
 
-Expected boot sequence (in `/tmp/openclaw-gateway.log`):
-```
-[gateway] loading config from /tmp/oc-home/.openclaw/openclaw.json
-[plugins] loaded N plugins (1 failed: memory-core / chokidar) ← OK
-[gateway] WS bound on ws://127.0.0.1:18789
-[gateway] ready
+Expected local URL:
+
+```text
+ws://127.0.0.1:18789
 ```
 
-Boot takes ~40 s. Wait until the port is listening:
+---
 
-```bash
-for i in $(seq 1 60); do
-  python3 -c "import socket;s=socket.socket();s.settimeout(1);s.connect(('127.0.0.1',18789));s.close()" \
-    2>/dev/null && echo ready && break
-  sleep 1
-done
-```
+## 5. Native Runtime Alternative
 
-## 4.4 Verify
+For native runtime, the equivalent setup is much simpler:
 
-```bash
-# Token is in the config file
-TOKEN=$(python3 -c 'import json;print(json.load(open("/tmp/oc-home/.openclaw/openclaw.json"))["gateway"]["auth"]["token"])')
+1. Start Mission Control.
+2. Open Settings.
+3. Configure OpenRouter.
+4. Start a run from `/runs`.
 
-# Backend should already be connected. Check from MC side:
-curl -s http://localhost:$BACKEND_PORT/api/gateway/status | jq
-# Expect: connected:true, auth_status:"authenticated"
-```
+No local OpenClaw gateway, token, pairing, or port `18789` is required.
 
-## 4.5 Adding model providers
-
-The gateway's `models.providers` block is empty by default. To use
-real models, add keys there. Example for OpenRouter:
-
-```json
-"models": {
-  "mode": "merge",
-  "providers": {
-    "openrouter": { "apiKey": "sk-or-..." }
-  }
-}
-```
-
-Restart the gateway after editing. (MC has no UI for this yet —
-this is a gateway-side concern. Could be added later as a Settings
-sub-page.)
-
-## 4.6 Stopping the gateway
-
-```bash
-pkill -f "openclaw gateway run"
-# or kill by PID from start.sh
-```
-
-The devguard block in `start.sh` reaps stale listeners on the MC
-ports but **not** on 18789. Stop the gateway manually if you need
-to recycle it.
-
-## 4.7 Troubleshooting
-
-| Symptom | Likely cause | Fix |
-| --- | --- | --- |
-| Port 18789 never opens | Pricing bootstrap or bonjour | Check log, verify `pricing.bootstrap:false` and bonjour deny |
-| 401 from gateway | Token mismatch | Re-read token from `openclaw.json`, update `~/.mission-control/gateway.json` or env |
-| Process exits silently | No `--verbose` | Add `--verbose`, read log |
-| `chokidar` missing | memory-core plugin | Ignore (non-fatal) |
-| MC can't connect at all | Wrong URL scheme | Use `ws://` for local, `wss://` for VPS |

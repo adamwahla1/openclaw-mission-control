@@ -6,6 +6,7 @@ import Dashboard from '@/pages/Dashboard'
 import TaskBoard from '@/pages/TaskBoard'
 import Projects from '@/pages/Projects'
 import ProjectDetail from '@/pages/ProjectDetail'
+import Runs from '@/pages/Runs'
 import DebateRoom from '@/pages/DebateRoom'
 import MemoryMap from '@/pages/MemoryMap'
 import VirtualOffice from '@/pages/VirtualOffice'
@@ -30,6 +31,7 @@ export default function App() {
               <Route path="/tasks" element={<TaskBoard />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:id" element={<ProjectDetail />} />
+              <Route path="/runs" element={<Runs />} />
               <Route path="/debate" element={<DebateRoom />} />
               <Route path="/memory" element={<MemoryMap />} />
               <Route path="/office" element={<VirtualOffice />} />

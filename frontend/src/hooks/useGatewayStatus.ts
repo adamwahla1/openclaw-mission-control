@@ -13,16 +13,15 @@ export function useGatewayStatus(pollMs = 5000): GatewayStatus {
     server: null,
   })
 
-  // 1. Poll for initial state (also catches SSE dropouts)
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch('/api/gateway/status')
+        const res = await fetch('/api/runtime/status')
         const data = await res.json()
         setStatus({
-          connected: data.connected ?? false,
-          auth: data.server?.auth ?? 'none',
-          server: data.server ?? null,
+          connected: data.ready ?? false,
+          auth: data.active_runtime ?? 'native',
+          server: data,
         })
       } catch {
         setStatus((s) => ({ ...s, connected: false }))
@@ -33,28 +32,23 @@ export function useGatewayStatus(pollMs = 5000): GatewayStatus {
     return () => clearInterval(interval)
   }, [pollMs])
 
-  // 2. Listen to SSE for instant updates
   useEffect(() => {
     const es = new EventSource('/events')
 
     const handler = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data)
-        if (data.status === 'connected') {
-          setStatus({
-            connected: true,
-            auth: data.auth ?? 'authenticated',
-            server: data.server ?? null,
-          })
-        } else if (data.status === 'disconnected') {
-          setStatus({ connected: false, auth: 'none', server: null })
-        }
+        setStatus((current) => ({
+          connected: data.status === 'ready' || data.status === 'active_changed' ? true : current.connected,
+          auth: data.active_runtime ?? current.auth,
+          server: { ...(current.server ?? {}), ...data },
+        }))
       } catch {
-        // ignore
+        // ignore malformed events
       }
     }
 
-    es.addEventListener('gateway', handler)
+    es.addEventListener('runtime', handler)
     return () => es.close()
   }, [])
 

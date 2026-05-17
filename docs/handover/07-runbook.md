@@ -1,139 +1,309 @@
-# 07 — Runbook
+# 07 - Native Runtime Runbook
 
-## 7.1 Start everything
+This runbook explains how to start, configure, and test Mission Control in
+native runtime mode.
+
+Native mode means:
+
+- No OpenClaw gateway is required.
+- Mission Control owns agents, sessions, runs, events, approvals, and tools.
+- OpenRouter can provide real model output.
+
+---
+
+## 1. Start The App
+
+From the repo root:
 
 ```bash
-cd /data/users/LJTvWmv8w3YZfYb6dMwkwprDPJv1/Workspace/openclaw_mission_control
 ./start.sh
 ```
 
-Order of operations inside `start.sh`:
-1. Resolve `VITE_PORT = $APP_PORT`, `BACKEND_PORT = APP_PORT + 100`.
-2. Devguard releases stale listeners on those ports.
-3. If port 18789 isn't already listening, start a local OpenClaw
-   gateway (v2026.4.25) writing to `/tmp/openclaw-gateway.log`.
-4. Wait up to 60 s for gateway port to open.
-5. Start FastAPI backend (`uvicorn main:app --reload`).
-6. Wait up to 15 s for `/api/health`.
-7. Start `npx vite --strictPort` for the frontend.
-8. `wait` on backend & frontend PIDs.
+Expected dev URLs:
 
-To start with a remote gateway and skip the local one, just don't
-have the openclaw binary discoverable. Or, simpler:
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:3100`
 
-```bash
-MC_GATEWAY_URL=wss://your-gw.example.com \
-MC_GATEWAY_TOKEN=xxxx \
-./start.sh
-```
+Exact ports may differ if `APP_PORT` is set.
 
-(The local-gateway block in `start.sh` only runs if port 18789 isn't
-already listening; if you don't want a local gateway at all but the
-binary is present, comment the block out — or kill 18789 manually.)
+---
 
-## 7.2 Stop everything
+## 2. Health Checks
+
+Backend health:
 
 ```bash
-# Frontend + backend
-pkill -f "uvicorn main:app"
-pkill -f "vite --host"
-
-# Local gateway
-pkill -f "openclaw gateway run"
+curl http://localhost:3100/health
 ```
 
-## 7.3 Health checks
+Runtime status:
 
 ```bash
-# MC backend liveness
-curl -s http://localhost:$BACKEND_PORT/health | jq
-
-# Gateway diagnostics
-curl -s http://localhost:$BACKEND_PORT/api/gateway/status | jq
-
-# Live agents from gateway
-curl -s http://localhost:$BACKEND_PORT/api/gateway/agents | jq
-
-# Settings (URL + token preview only)
-curl -s http://localhost:$BACKEND_PORT/api/gateway/settings | jq
+curl http://localhost:3100/api/runtime/status
 ```
 
-End-of-session known-good output:
+Expected native-ready shape:
 
 ```json
-GET /health
-{"status":"ok",
- "gateway_connected":true,
- "gateway_authenticated":true,
- "auth_status":"authenticated",
- "version":"0.1.0"}
-
-GET /api/gateway/agents
-{"ok":true,
- "agents":[{"id":"main","workspace":"/tmp/oc-home/.openclaw/workspace"}]}
+{
+  "active_runtime": "native",
+  "runtime_ready": true
+}
 ```
 
-## 7.4 Logs
+The exact response may include additional compatibility fields.
 
-| What | Where |
-| --- | --- |
-| Local OpenClaw gateway | `/tmp/openclaw-gateway.log` |
-| Backend (uvicorn) | stdout of `start.sh` |
-| Frontend (vite) | stdout of `start.sh` |
+---
 
-Tail gateway log:
-```bash
-tail -f /tmp/openclaw-gateway.log
-```
+## 3. Configure OpenRouter
 
-## 7.5 Common ops
+In the UI:
 
-### Change which gateway MC talks to
+1. Open `/settings`.
+2. Find Providers / OpenRouter.
+3. Paste an OpenRouter API key.
+4. Click save.
+5. Click test.
+6. Confirm the UI reports connected and shows a model count.
 
-UI: Settings → enter URL/token → Save & Reconnect.
+Do not commit the key. Do not paste it into docs.
 
-CLI:
-```bash
-curl -X PUT http://localhost:$BACKEND_PORT/api/gateway/settings \
-  -H 'Content-Type: application/json' \
-  -d '{"url":"wss://new-gateway.example.com","token":"abcd1234"}'
-```
-
-### Force a reconnect
+If testing by API:
 
 ```bash
-curl -X POST http://localhost:$BACKEND_PORT/api/gateway/reconnect
+curl -X POST http://localhost:3100/api/providers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "openrouter",
+    "enabled": true,
+    "config": {
+      "api_key": "sk-or-v1-REPLACE_ME"
+    }
+  }'
 ```
 
-### Reset MC identity (fresh device)
+Test:
 
 ```bash
-rm -rf ~/.mission-control/identity
-# next connection MC will generate a new keypair and need to re-pair
+curl -X POST http://localhost:3100/api/providers/openrouter/test \
+  -H "Content-Type: application/json" \
+  -d '{"api_key":"sk-or-v1-REPLACE_ME"}'
 ```
 
-### Reset persisted gateway settings
+---
+
+## 4. Configure Model Purposes
+
+Open `/settings`, then configure defaults for:
+
+- planner
+- builder
+- reviewer
+- cheap_fast
+- long_context
+
+If unsure, choose a working OpenRouter model for all purposes first. The goal
+is to prove the workflow. Fine-tuning model choices can come later.
+
+---
+
+## 5. Start A Project Builder Run
+
+In the UI:
+
+1. Open `/runs`.
+2. Enter a clear task title or prompt.
+3. Start a Project Builder run.
+4. Watch the timeline.
+5. Wait for an approval card.
+6. Click Approve.
+7. Confirm the run resumes.
+8. Confirm the run completes.
+9. Read the final report.
+
+Expected event categories:
+
+- run started
+- step started
+- model output
+- step completed
+- approval required
+- approval approved
+- run completed
+
+API alternative:
 
 ```bash
-rm ~/.mission-control/gateway.json
-# next start: env vars / autodetect take over
+curl -X POST http://localhost:3100/api/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kind": "project_builder",
+    "title": "Prototype test",
+    "input": "Build a tiny feature plan and report."
+  }'
 ```
 
-### Reset local gateway state
+Then list events:
 
 ```bash
-rm -rf /tmp/oc-home
-./start.sh   # rebootstraps fresh config
+curl http://localhost:3100/api/runs/RUN_ID/events
 ```
 
-## 7.6 Where ports/tokens come from at a glance
+---
 
+## 6. Approval Flow
+
+List approvals:
+
+```bash
+curl http://localhost:3100/api/approvals
 ```
-APP_PORT          ← sandbox / Vite preview
-BACKEND_PORT      ← APP_PORT + 100
-Gateway port      ← 18789 (local) or implicit in URL (remote)
-Gateway token     ← env var > ~/.mission-control/gateway.json
-                    > ~/.openclaw/openclaw.json
-Device keypair    ← ~/.mission-control/identity/device.json
-                    (fallback ~/.openclaw/identity/device.json)
+
+Approve:
+
+```bash
+curl -X POST http://localhost:3100/api/approvals/APPROVAL_ID/approve \
+  -H "Content-Type: application/json" \
+  -d '{"decision_payload":{"note":"Approved for test"}}'
 ```
+
+Reject:
+
+```bash
+curl -X POST http://localhost:3100/api/approvals/APPROVAL_ID/reject \
+  -H "Content-Type: application/json" \
+  -d '{"decision_payload":{"note":"Rejected for test"}}'
+```
+
+Expected behavior:
+
+- Approve resumes waiting run.
+- Reject cancels waiting run.
+
+---
+
+## 7. Cost/Usage Checks
+
+Provider calls should record cost/usage metadata where available.
+
+Check cost API:
+
+```bash
+curl http://localhost:3100/api/costs
+```
+
+The exact cost output depends on existing cost dashboard routes. The important
+new storage fields are:
+
+- provider
+- requested_model
+- actual_model
+- latency_ms
+- native_run_id
+
+---
+
+## 8. Logs
+
+Backend logs:
+
+- stdout of `start.sh` / uvicorn process
+
+Frontend logs:
+
+- browser console
+- Vite terminal output
+
+OpenClaw logs:
+
+- Only relevant if optional OpenClaw runtime is active.
+
+---
+
+## 9. Common Problems
+
+### App still talks about OpenClaw on Dashboard
+
+Known stale copy. Update Dashboard text to native runtime language.
+
+### OpenRouter test fails
+
+Possible causes:
+
+- Key is invalid.
+- Key was revoked.
+- Network blocked.
+- OpenRouter API changed.
+- Provider route is not mounted.
+
+Check:
+
+```bash
+curl http://localhost:3100/api/providers
+```
+
+### Run only shows placeholder text
+
+Possible causes:
+
+- No provider configured.
+- Model config missing.
+- Provider call failed and runtime fell back offline.
+
+Check Settings provider state first.
+
+### Approval appears but run never resumes
+
+Check:
+
+```bash
+curl http://localhost:3100/api/approvals
+curl http://localhost:3100/api/runs/RUN_ID
+curl http://localhost:3100/api/runs/RUN_ID/events
+```
+
+Expected run status before approval:
+
+```text
+waiting_approval
+```
+
+Expected run status after approval:
+
+```text
+running, then completed
+```
+
+### Full backend cannot start locally
+
+The earlier browser verification had dependency/environment issues for full
+FastAPI startup. If this happens:
+
+1. Create a clean Python environment.
+2. Install `backend/requirements.txt`.
+3. Verify Pydantic AI and LangGraph can install on the machine.
+4. Run backend syntax compile.
+5. Start uvicorn.
+
+---
+
+## 10. Optional OpenClaw Mode
+
+Only use this if specifically testing legacy adapter support.
+
+Switch runtime:
+
+```bash
+curl -X PUT http://localhost:3100/api/runtime/active \
+  -H "Content-Type: application/json" \
+  -d '{"runtime":"openclaw"}'
+```
+
+Then follow the legacy OpenClaw docs:
+
+- `03-openclaw-bugs.md`
+- `04-local-gateway-setup.md`
+- `05-remote-gateway-vps.md`
+
+Do not use OpenClaw setup as the default path for new native runtime work.
+

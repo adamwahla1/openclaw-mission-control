@@ -1,240 +1,324 @@
-# OpenClaw Mission Control — Handover Document
+# Mission Control Native Runtime - Master Handover
 
-**Date:** 2026-05-07 (updated)
+**Date:** 2026-05-17
 **Repo:** https://github.com/adamwahla1/openclaw-mission-control
-**Branch:** `master`
-**Project root:** `/data/users/LJTvWmv8w3YZfYb6dMwkwprDPJv1/Workspace/openclaw_mission_control`
+**Working branch:** `native-runtime-readiness`
+**Pull request:** https://github.com/adamwahla1/openclaw-mission-control/pull/1
+**Local verification copy:** `C:\Users\aawah\Documents\Codex\mc-native-verify2\openclaw-mission-control-native-runtime-readiness`
 
-This is the master handover document. It is intentionally exhaustive so another
-AI / engineer can pick up the project cold. Read this first, then drill into
-the supporting documents in this folder:
+This document is the first file a new engineer or AI agent should read.
+It deliberately repeats important ideas in plain language because the next
+reader may have less context, weaker reasoning, or no memory of the planning
+conversation.
 
-- [`01-architecture.md`](./01-architecture.md) — Stack, processes, data flow
-- [`02-session-changes.md`](./02-session-changes.md) — Every file changed in this session, with code & rationale
-- [`03-openclaw-bugs.md`](./03-openclaw-bugs.md) — OpenClaw bugs hit and the workarounds we landed
-- [`04-local-gateway-setup.md`](./04-local-gateway-setup.md) — How to run a local OpenClaw v2026.4.25 gateway
-- [`05-remote-gateway-vps.md`](./05-remote-gateway-vps.md) — Connecting MC to a remote (VPS) gateway, current pairing blocker
-- [`06-settings-ui.md`](./06-settings-ui.md) — New Settings page, API endpoints, token resolution chain
-- [`07-runbook.md`](./07-runbook.md) — Start/stop, health checks, common ops
-- [`08-open-issues.md`](./08-open-issues.md) — Known issues and pending work
-- [`09-this-session.md`](./09-this-session.md) — Current session: remote gateway fixes, token-only auth
-- [`CHANGELOG.md`](../../CHANGELOG.md) — Complete feature history from day 1
+The most important product decision is this:
 
----
+**Mission Control is no longer OpenClaw-first. Mission Control is becoming
+a local-first, supervised, native AI agent runtime. OpenClaw should now be
+treated as an optional adapter, not as the core runtime.**
 
-## 1. What this project is
-
-**OpenClaw Mission Control (MC)** is a dashboard that talks to an
-**OpenClaw Gateway** (the agent runtime) over WebSocket and exposes a
-React UI for orchestrating agents, sessions, debates, memory, the
-"virtual office", autopilot pipelines, skills, and cost.
-
-- **Frontend**: React 19 + Vite + TypeScript + Tailwind + shadcn/ui + Zustand
-- **Backend**: FastAPI (Python) + SQLite (WAL)
-- **Realtime**: Backend ↔ Gateway over WebSocket; Frontend ↔ Backend over SSE
-- **AI access**: All model calls go through the OpenClaw Gateway (no direct
-  provider SDKs in MC).
-- **Backend role on the gateway**: `operator` WebSocket client with
-  `operator.admin` scope, authenticated via Ed25519 device identity.
-
-Phases already implemented (prior sessions):
-1. Phase 1 — Foundation + Tasks
-2. Phase 2 — Projects + Debate
-3. Phase 3 — Memory Neural Map + Virtual Office
-4. Phase 4 — Autopilot, Skills Hub, Security (Aegis), Cost Dashboard
+If another model reads older files or old commit history and concludes that
+Mission Control must connect to OpenClaw before it can do useful work, that
+model is reading stale context. The current direction is native-first.
 
 ---
 
-## 2. What we did **in this session** (TL;DR)
+## 1. Current Product Definition
 
-We made MC work standalone, against either a **local** or **remote**
-OpenClaw gateway, and added a real Settings UI to switch between them.
+Mission Control is a full-stack web app for supervising AI agents, project
+builder workflows, tool use, approvals, memory, cost, and execution traces.
 
-1. **Remote gateway support** — MC can now connect to any reachable
-   OpenClaw gateway over WSS by configuring a URL + token. Token is sent
-   in the WS URL query string (matching the pattern in the reference
-   `crshdn/mission-control` repo).
-2. **Standalone device identity** — MC keeps its Ed25519 keypair and
-   device record under `~/.mission-control/identity/` instead of piggy-
-   backing on `~/.openclaw/`. So MC works without any local OpenClaw
-   install.
-3. **Persistent gateway settings** — URL/token persisted at
-   `~/.mission-control/gateway.json` and overridable via
-   `MC_GATEWAY_URL` / `MC_GATEWAY_TOKEN` (or `OPENCLAW_*` aliases).
-4. **Settings UI** — `frontend/src/pages/Settings.tsx` is now a real
-   page: live status, URL/token inputs, Save & Reconnect, Reconnect,
-   token preview, source indicator (env / persisted / auto), quick setup
-   guide. Backed by new `GET/PUT /api/gateway/settings` endpoints.
-5. **Local gateway auto-start** — `start.sh` now boots OpenClaw
-   v2026.4.25 with a fresh sandbox config, the `pricing.bootstrap: false`
-   workaround, bonjour disabled, and `--allow-unconfigured --verbose`.
-   Works around the v2026.4.24 CPU-spin bug we hit earlier.
-6. **VPS connection tested** against
-   `wss://openclaw-npt3.srv1624328.hstgr.cloud` — handshake +
-   signature succeed, gateway returns `DEVICE_PAIRING_REQUIRED`. This
-   is expected behaviour — the device must be approved on the gateway
-   side before it can connect.
+The intended user experience is:
 
-## 3. What we did in the **2026-05-07 session**
+1. The user starts Mission Control locally.
+2. Mission Control boots even when OpenClaw is not installed, not running, or
+   not configured.
+3. The user configures a model provider, first OpenRouter.
+4. The user creates or selects an agent.
+5. The user starts a session or a Project Builder run.
+6. Mission Control streams the run timeline into the UI.
+7. Risky actions pause for human approval.
+8. The user approves or rejects the action.
+9. Mission Control resumes, records all events, stores costs, and shows a
+   final report.
 
-Fixed remote gateway connection for atomicbot.ai hosted OpenClaw.
-
-**Problem:** MC connected to `wss://7e4b2041f4.atomicbot.ai` but the gateway
-kept closing with `DEVICE_PAIRING_REQUIRED` (1008 policy violation). The
-user had no way to approve the pairing on the hosted gateway.
-
-**Root cause:** MC was using the full Ed25519 device-auth handshake (v3
-protocol with signed connect message). This requires device pairing approval
-on the gateway. But the atomicbot.ai gateway uses **token-only auth** —
-clients just send `auth: {token: "..."}` in the connect payload, no
-signature needed.
-
-**Fixes:**
-1. `gateway_bridge.py` — auto-convert `https://` URLs to `wss://` for
-   WebSocket compatibility.
-2. `gateway_bridge.py` — detect local vs remote gateway. Remote gateways
-   use token-only connect (simple `auth: {token}` payload). Local gateways
-   still use full Ed25519 device auth for security.
-3. `start.sh` — detect persisted remote gateway config and skip the 60s
-   local OpenClaw gateway bootstrap (eliminates startup delay).
-
-**Current state:**
-- ✅ Connected and authenticated to `wss://7e4b2041f4.atomicbot.ai`
-- ✅ `health` and `status` RPCs work
-- ⚠️ `agents.list`, `channels.status`, and other operator methods fail
-  with `"missing scope: operator.read"` — the token has **no scopes**.
-  This is a **gateway-side configuration issue** (not MC code).
-  The user needs to add `operator.read` (and ideally `operator.write`,
-  `operator.admin`) scopes to the token via their atomicbot.ai control
-  panel or OpenClaw CLI on the host.
-
-See [`09-this-session.md`](./09-this-session.md) for full details,
-including testing scripts and handoff checklist.
+OpenClaw can still exist, but only as one possible external runtime adapter.
+It must not be required for the default app path.
 
 ---
 
-Verified working state at end of **2026-04-28** session:
+## 2. Read These Files In Order
 
+Read this file first, then read the rest in this exact order:
+
+1. [`01-architecture.md`](./01-architecture.md) - Native-first architecture,
+   process map, runtime registry, provider layer, run/event ledger.
+2. [`02-session-changes.md`](./02-session-changes.md) - File-by-file record of
+   what changed in the native runtime readiness implementation.
+3. [`03-openclaw-bugs.md`](./03-openclaw-bugs.md) - Legacy OpenClaw gateway
+   bug notes. Read only if working on the optional OpenClaw adapter.
+4. [`04-local-gateway-setup.md`](./04-local-gateway-setup.md) - Legacy local
+   OpenClaw setup. Not needed for native runtime mode.
+5. [`05-remote-gateway-vps.md`](./05-remote-gateway-vps.md) - Legacy remote
+   OpenClaw notes. Do not treat these as current product setup.
+6. [`06-settings-ui.md`](./06-settings-ui.md) - Current Settings page:
+   Runtime, Providers, Models, Tools, Approvals, Runs.
+7. [`07-runbook.md`](./07-runbook.md) - How to run, configure, test, and debug
+   the native runtime prototype.
+8. [`08-open-issues.md`](./08-open-issues.md) - Current gaps, risks, and next
+   implementation priorities.
+9. [`09-this-session.md`](./09-this-session.md) - Latest session summary,
+   implementation status, verification, and browser test notes.
+10. [`10-native-runtime-prototype-test.md`](./10-native-runtime-prototype-test.md)
+    - Detailed record of the OpenRouter/browser workflow test.
+11. [`CHANGELOG.md`](../../CHANGELOG.md) - Historical feature timeline.
+
+---
+
+## 3. Stack
+
+Frontend:
+
+- React 19
+- Vite
+- TypeScript
+- Tailwind CSS
+- shadcn/ui style components
+- Zustand where local app state is already used
+- Server-Sent Events for live updates from backend to browser
+
+Backend:
+
+- FastAPI
+- Python 3.11+
+- SQLite in WAL mode
+- Pydantic models for request/response validation
+- Native runtime services under `backend/services`
+- Routers under `backend/routers`
+
+Native AI direction:
+
+- OpenRouter is the first provider.
+- Pydantic AI is intended for typed single-agent execution, structured
+  outputs, and tool validation.
+- LangGraph is intended for durable multi-step workflows, checkpoints,
+  retries, and human interrupts.
+
+Important nuance:
+
+The first readiness implementation added the native runtime foundation and
+optional imports for Pydantic AI and LangGraph. It does not yet use every
+advanced Pydantic AI or LangGraph capability deeply. The current code should
+be treated as a working prototype foundation, not the final agent engine.
+
+---
+
+## 4. What Was Built In The Native Runtime Readiness Work
+
+The branch introduces these major concepts:
+
+- `RuntimeRegistry`
+  - Keeps track of the active runtime.
+  - Defaults to `native`.
+  - Can optionally activate `openclaw`.
+
+- `NativeMissionControlRuntime`
+  - Owns local agents, sessions, messages, runs, events, approvals, and
+    artifacts.
+  - Can create agents and sessions without OpenClaw.
+  - Can start a Project Builder run.
+  - Emits run events that the UI can display.
+  - Creates an approval before simulated write-risk work.
+  - Resumes a paused run after approval.
+
+- Provider layer
+  - Adds `ModelProvider` abstraction.
+  - Adds `OpenRouterProvider`.
+  - Supports provider config storage.
+  - Supports model purpose config such as planner, builder, reviewer,
+    cheap/fast, and long-context.
+  - Records usage/cost metadata when available.
+
+- Durable native schema
+  - Adds runtime/provider/run/session/message/artifact/tool tables.
+  - Extends approvals to be useful for native runtime work.
+  - Seeds default runtime config, model purposes, and tool registry entries.
+
+- Runs page
+  - New `/runs` route.
+  - Starts Project Builder prototype runs.
+  - Shows run status.
+  - Shows persisted event timeline.
+  - Shows approval UI for paused runs.
+  - Shows final report when complete.
+
+- Settings page redesign
+  - Runtime section.
+  - OpenRouter provider section.
+  - Model configuration section.
+  - Tool approval policy section.
+  - Approvals section.
+  - Recent runs section.
+
+---
+
+## 5. Current API Surface
+
+Native runtime APIs:
+
+- `GET /api/runtime/status`
+- `PUT /api/runtime/active`
+- `GET /api/providers`
+- `POST /api/providers`
+- `POST /api/providers/openrouter/test`
+- `GET /api/providers/openrouter/models`
+- `GET /api/model-configs`
+- `POST /api/model-configs`
+- `GET /api/runs`
+- `POST /api/runs`
+- `GET /api/runs/{run_id}`
+- `GET /api/runs/{run_id}/events`
+- `POST /api/runs/{run_id}/cancel`
+- `POST /api/runs/{run_id}/resume`
+- `GET /api/approvals`
+- `POST /api/approvals`
+- `POST /api/approvals/{id}/approve`
+- `POST /api/approvals/{id}/reject`
+- `GET /api/tools`
+- `PATCH /api/tools/{tool_id}`
+
+Existing APIs that remain for compatibility:
+
+- `/api/agents`
+- `/api/orchestrator`
+- `/api/debates`
+- `/api/autopilot`
+- `/api/memories`
+- `/api/costs`
+- `/api/gateway/*`
+
+Important compatibility note:
+
+Some database columns still have names like `gateway_agent_id` and
+`gateway_session_id`. In native mode these must be interpreted as optional
+external references or compatibility storage, not as proof that OpenClaw is
+the primary runtime.
+
+---
+
+## 6. Expected Native Workflow
+
+Project Builder v1 currently behaves like this:
+
+1. User starts a run from `/runs`, or a task dispatch starts a run through the
+   orchestrator.
+2. Backend creates a row in `runs`.
+3. Backend creates step and event rows in `run_steps` and `run_events`.
+4. Runtime performs these high-level phases:
+   - intake
+   - plan
+   - research
+   - build draft
+   - approval pause
+   - review
+   - test plan
+   - final report
+5. If an OpenRouter key is configured, the provider layer calls a real model.
+6. If no provider key is configured, the runtime falls back to offline
+   placeholder text so the app still demonstrates the workflow.
+7. The run pauses before a write-risk tool.
+8. The user approves or rejects from the UI.
+9. Approval resumes the run.
+10. Rejection cancels the waiting run.
+11. Final report is stored as an artifact and shown in the UI.
+
+---
+
+## 7. Verification Already Done
+
+Backend syntax verification passed for the new runtime files.
+
+Frontend production build passed:
+
+- `npm run build`
+- Result: build succeeded.
+- Warning: Vite reported a large chunk size. That is not a blocker for the
+  prototype.
+
+Browser-visible prototype test with active OpenRouter model:
+
+- The Settings page accepted a user-provided OpenRouter key.
+- Provider test returned success and a model count.
+- Runs page started a Project Builder run.
+- Real OpenRouter model output appeared in the run timeline.
+- Approval appeared.
+- Approval click resumed the run.
+- Run completed and final report appeared.
+
+Important honesty note:
+
+The browser test used a local prototype API harness that matched the intended
+backend endpoints because the full FastAPI dependency setup was blocked in the
+local verification environment. This means:
+
+- Frontend workflow and endpoint contract were browser-tested with real
+  OpenRouter calls.
+- Backend Python files were syntax-checked.
+- The complete real FastAPI backend still needs one clean end-to-end run in a
+  fully installed Python environment.
+
+---
+
+## 8. Current Security Note
+
+The user pasted an OpenRouter key into the conversation during testing.
+Do not copy that key into docs, logs, screenshots, commits, or examples.
+The user should rotate or revoke that key after testing.
+
+Docs and code examples must use placeholders such as:
+
+```text
+sk-or-v1-REPLACE_ME
 ```
-GET /health
-{"status":"ok",
- "gateway_connected":true,
- "gateway_authenticated":true,
- "auth_status":"authenticated",
- "version":"0.1.0"}
-
-GET /api/gateway/agents
-[{"id":"main","workspace":"/tmp/oc-home/.openclaw/workspace"}]
-```
 
 ---
 
-## 3. Key files touched in this session
+## 9. Highest Priority Next Steps
 
-| File | Change |
-| --- | --- |
-| `backend/config.py` | Added `MC_GATEWAY_URL/TOKEN` + `OPENCLAW_GATEWAY_URL/TOKEN` env vars; `save_gateway_settings()` / `load_gateway_settings()` persisting to `~/.mission-control/gateway.json`; resolution priority env → persisted → local autodetect. |
-| `backend/services/device_auth.py` | New `MC_IDENTITY_DIR = ~/.mission-control/identity`. Identity load/save uses MC path first, OC path as fallback. `get_gateway_url/token()` now read from `config.settings`. |
-| `backend/services/gateway_bridge.py` | `_build_ws_url()` appends `?token=…` to the WS URL. Scopes raised to `["operator.admin"]`. `update_gateway_settings()` for runtime reconfig. |
-| `backend/routers/gateway.py` | New `GET /api/gateway/settings` and `PUT /api/gateway/settings`. |
-| `frontend/src/pages/Settings.tsx` | Full Settings page (status, inputs, save/reconnect, setup guide). |
-| `start.sh` | Auto-installs/locates OpenClaw v2026.4.25 (`.oc-v25/` then `.openclaw-install/`), creates `/tmp/oc-home/.openclaw/openclaw.json`, generates a token if missing, runs gateway with `--allow-unconfigured --verbose`. Waits up to 60s for it to come up. |
-| `tasks.json` | Updated phase task statuses. |
-
-Full code snippets and rationale: see [`02-session-changes.md`](./02-session-changes.md).
-
----
-
-## 4. How it works end-to-end (current state)
-
-1. `start.sh` is the single entry point.
-2. It launches a local OpenClaw v2026.4.25 gateway (port 18789 by
-   default) — unless the user overrides `MC_GATEWAY_URL` to point at a
-   remote gateway, in which case the local one isn't strictly needed.
-3. FastAPI backend boots on `$APP_PORT` (3000–3099 range).
-4. On boot, `gateway_bridge` reads `settings.gateway_url/token` (env →
-   persisted → autodetected from `~/.openclaw/openclaw.json`) and opens
-   a WebSocket to `<url>?token=<token>`.
-5. MC presents a device challenge / signature handshake using the
-   Ed25519 key in `~/.mission-control/identity/device.json`.
-6. Gateway either replies `AUTHENTICATED` (local, allow-unconfigured) or
-   `DEVICE_PAIRING_REQUIRED` (VPS, awaiting approval).
-7. Frontend at `/settings` lets the user change URL/token at runtime —
-   PUT triggers `gateway_bridge.update_gateway_settings()` which closes
-   the current WS, persists, and lets the supervisor reconnect.
-
-Detailed sequence diagram and component map in
-[`01-architecture.md`](./01-architecture.md).
+1. Run the real FastAPI backend with dependencies installed and repeat the
+   browser workflow against the real backend, not the prototype harness.
+2. Finish replacing stale OpenClaw wording in older UI copy, especially the
+   Dashboard message that still says to connect to OpenClaw.
+3. Deepen the native runtime from prototype flow into true Pydantic AI and
+   LangGraph execution.
+4. Add true SSE replay from persisted `run_events` so browser reconnect never
+   loses timeline state.
+5. Add real supervised tools for repository read/search/draft/test/report.
+6. Add stronger provider key handling and local secret hygiene.
+7. Add automated tests for runtime, providers, approvals, and run event replay.
 
 ---
 
-## 5. Outstanding issues
+## 10. Mental Model For The Next Owner
 
-These are **not blockers for code review** but are pending real-world ops:
+Think of Mission Control as three layers:
 
-1. **VPS device pairing** — The VPS gateway returned
-   `DEVICE_PAIRING_REQUIRED`. The user must run an "approve device"
-   action on the VPS (either via the VPS's own MC UI or `openclaw`
-   CLI). Until then MC connects but can't do work against the VPS.
-2. **No model providers configured** — The local gateway has no
-   OpenRouter / Kimi / Anthropic key yet, so `agent.run` will fail
-   with "no provider". Add via `openclaw configure` or write keys into
-   `~/.openclaw/openclaw.json` `providers` block. (Out of scope for MC
-   itself — this is gateway config.)
-3. **`chokidar` missing for memory-core plugin** — Non-fatal warning at
-   gateway startup. Doesn't affect MC. Workaround: `npm i -g chokidar`
-   in the OpenClaw install dir, or ignore.
-4. **Bonjour/mDNS plugin** — Crashes the gateway in the sandbox. We set
-   `OPENCLAW_DISABLE_BONJOUR=1` in `start.sh`. If you change the start
-   script, keep that.
-5. **Auth status surfacing** — When the gateway returns
-   `DEVICE_PAIRING_REQUIRED`, `auth_status` becomes `pairing_required`.
-   The Settings page shows it but there's no "Approve on gateway" button
-   yet — that requires a paired-device approval API on the gateway side.
+1. Product layer:
+   - Pages, runs, tasks, approvals, trace views, cost dashboards.
 
-Full list with reproduction details in [`08-open-issues.md`](./08-open-issues.md).
+2. Runtime layer:
+   - Native runtime by default.
+   - Optional OpenClaw adapter later.
+   - Future adapters can be added without changing the UI model.
 
----
+3. Provider/tool layer:
+   - OpenRouter first.
+   - More providers later.
+   - Tools are supervised and risk-tagged.
 
-## 6. How to run it (quick)
+The UI should care about Mission Control concepts: agents, sessions, runs,
+events, approvals, tools, cost, memory, artifacts.
 
-```bash
-cd /data/users/LJTvWmv8w3YZfYb6dMwkwprDPJv1/Workspace/openclaw_mission_control
-./start.sh
-```
+The UI should not care whether the work was executed by native runtime,
+OpenClaw, LangGraph, Pydantic AI, or another future engine.
 
-That will:
-- Locate / install OpenClaw v2026.4.25
-- Boot the gateway on port 18789 (logs in `/tmp/openclaw-gateway.log`)
-- Boot the FastAPI backend on `$APP_PORT`
-- Frontend is served as static assets by the backend (already built into
-  `frontend/dist/`).
-
-To point at a remote gateway instead:
-
-```bash
-export MC_GATEWAY_URL="wss://your-gateway.example.com"
-export MC_GATEWAY_TOKEN="your-token"
-./start.sh
-# then open /settings in MC and approve / pair the device on the gateway
-```
-
-Full runbook in [`07-runbook.md`](./07-runbook.md).
-
----
-
-## 7. Where to look when things go wrong
-
-- **Backend ↔ Gateway issues**: `backend/services/gateway_bridge.py`,
-  log line "GatewayBridge:" prefix.
-- **Auth / signing issues**: `backend/services/device_auth.py`. Identity
-  files at `~/.mission-control/identity/`.
-- **Settings persistence**: `~/.mission-control/gateway.json`.
-- **Local gateway logs**: `/tmp/openclaw-gateway.log`.
-- **Local gateway home**: `/tmp/oc-home/.openclaw/`.
-- **Gateway port**: 18789 (configured in `start.sh`).
-- **MC port**: `$APP_PORT` (3000–3099, picked by sandbox).
-
----
-
-See the supporting documents in this folder for everything else.

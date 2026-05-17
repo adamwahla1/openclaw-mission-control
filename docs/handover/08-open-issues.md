@@ -1,125 +1,277 @@
-# 08 — Open issues & next steps
+# 08 - Open Issues And Next Steps
 
-**Updated:** 2026-05-07
+**Updated:** 2026-05-17
 
-## 8.1 Open issues
+This file lists the important remaining work after the native runtime readiness
+prototype.
 
-### A. Remote gateway token lacks operator scopes
-- **State:** MC connects successfully to `wss://7e4b2041f4.atomicbot.ai`
-  via token-only auth. `health` and `status` RPCs work. But any method
-  requiring `operator.read` scope fails with:
-  `{"code": "INVALID_REQUEST", "message": "missing scope: operator.read"}`
-- **Root cause:** The gateway auth token has `"scopes": []` in the
-  `hello-ok` response. This is a gateway-side configuration issue.
-- **Owner:** user / atomicbot.ai hosting support.
-- **Action items:**
-  1. Add `operator.read`, `operator.write`, and `operator.admin` scopes
-     to the token on the gateway side (via atomicbot.ai control panel,
-     OpenClaw CLI, or gateway config).
-  2. In MC Settings, click "Save & Reconnect" (no restart needed).
-  3. Verify by checking `/api/gateway/status-rpc` → should show agents.
-- **Code work needed in MC:** Settings UI could show a warning banner
-  when connected but `auth.scopes` is empty, with instructions.
-  Also: add a "Test Connection" button that calls `health` or `status`
-  and reports scope status before saving.
+---
 
-### B. (Historical) VPS device pairing — RESOLVED by token-only auth
-- **Previous state:** MC connected to `wss://openclaw-npt3.srv1624328.hstgr.cloud`,
-  Ed25519 auth succeeded, gateway returned `DEVICE_PAIRING_REQUIRED`.
-- **Resolution:** The 2026-05-07 session changed MC to use **token-only auth**
-  for remote gateways (non-localhost URLs). This bypasses the device pairing
-  requirement entirely. The old VPS endpoint is no longer the active target;
-  the user is now connecting to `7e4b2041f4.atomicbot.ai`.
-- **See:** `09-this-session.md` and `CHANGELOG.md` commit `b01f5da`.
+## 1. Highest Priority Issues
 
-### B. No model providers configured on the local gateway
-- **State:** `models.providers = {}` in
-  `/tmp/oc-home/.openclaw/openclaw.json`.
-- **Effect:** `agent.run` will return "no provider available". MC's
-  Agents/Sessions pages show empty model dropdowns.
-- **Action items:** add OpenRouter / Kimi / Anthropic / etc. keys to
-  `models.providers` and restart the gateway. See
-  [04-local-gateway-setup.md §4.5](./04-local-gateway-setup.md).
-- **Code work needed in MC:** later, a Settings sub-page to manage
-  provider keys via gateway RPC would be nice.
+### A. Real FastAPI end-to-end verification still needed
 
-### C. `chokidar` missing for `memory-core` plugin
-- **State:** Non-fatal warning at gateway startup.
-- **Effect:** OC's memory-core plugin doesn't load. MC stores its own
-  memory in SQLite, so unaffected.
-- **Action items:** ignore, or `npm i chokidar` in
-  `.oc-v25/node_modules`.
+State:
 
-### D. Auth status surfacing in UI is read-only
-- **State:** Settings page shows "pairing required" / "connected" /
-  "disconnected" with diagnostics, but offers no "Approve on
-  gateway" button.
-- **Reason:** That requires a paired admin device's `operator.admin`
-  scope, which is exactly the device that's currently *not* paired.
-  Chicken-and-egg.
-- **Action items:** if a separate admin MC instance exists, it can
-  call `POST /api/gateway/pairing/approve/{id}` to approve siblings.
-  Otherwise pair via gateway CLI on the host.
+- Python syntax compile passed.
+- Frontend build passed.
+- Browser-visible flow was tested with a local prototype API harness and real
+  OpenRouter calls.
 
-### E. `/api/gateway/reconnect` is currently a no-op confirmation
-- **State:** Endpoint returns "ok" but doesn't proactively close the
-  WS — relies on the connection loop's natural reconnect behaviour.
-- **Effect:** "Reconnect" button in UI may take up to one keepalive
-  cycle to take effect.
-- **Action items:** mirror the WS-close logic from
-  `update_gateway_settings()` minus the save step.
+Gap:
 
-### F. Token in WS query string shows up in some logs
-- **State:** We redact in our own logger, but reverse proxy access
-  logs may not.
-- **Action items:** if deploying behind nginx/Cloudflare with logs,
-  add a query-string redaction rule for `token=`.
+- The exact same browser workflow still needs to be repeated against the real
+  FastAPI backend in a fully installed environment.
 
-## 8.2 Pending tasks (from prior session, still open)
+Why it matters:
 
-These existed before this session and are unchanged:
+The prototype harness proved the UI and endpoint contract. It did not prove
+that all real backend dependencies and routers run together cleanly.
 
-- Phase 4 polish — Autopilot pipeline persistence (currently
-  in-memory).
-- Aegis security audit — needs more rule packs.
-- Cost dashboard — needs richer breakdowns once provider keys are
-  flowing real cost data.
-- D3 memory neural map — performance work for >1k nodes.
+Next action:
 
-## 8.3 Suggested next moves (in priority order)
+1. Install backend dependencies in a clean environment.
+2. Start real backend.
+3. Start frontend.
+4. Configure OpenRouter.
+5. Start run.
+6. Approve run.
+7. Confirm completion and final report.
 
-1. **Approve the VPS device** so the user can drive a real gateway
-   end-to-end and we can stress-test the bridge under remote
-   latency / Cloudflare.
-2. **Add at least one model provider** (OpenRouter) to the local
-   gateway config so `agent.run` works for demos.
-3. **Settings UI: connection-test button** — separate from "Save &
-   Reconnect", so users can verify URL+token before persisting.
-   Backend: open a transient WS with the candidate values, run the
-   challenge handshake, return success/failure.
-4. **Settings UI: providers sub-page** — list configured providers
-   from gateway RPC, allow adding keys (writes go to
-   `~/.openclaw/openclaw.json` via gateway, not via MC FS access).
-5. **Harden identity file perms** — chmod 0600 on
-   `~/.mission-control/identity/*`.
-6. **Document the `operator.admin` scope contract** with the
-   gateway team — confirm the union of `read+write` is intentional.
+---
 
-## 8.4 Useful commands cheat sheet
+### B. Dashboard still has stale OpenClaw-first copy
 
-```bash
-# What gateway is MC currently using?
-curl -s localhost:$BACKEND_PORT/api/gateway/settings
+State:
 
-# Force MC to forget gateway settings:
-rm ~/.mission-control/gateway.json && pkill -HUP -f uvicorn
+- Browser test showed Dashboard copy that says to connect to OpenClaw Gateway.
 
-# Force MC to forget identity (full re-pair):
-rm -rf ~/.mission-control/identity
+Why it matters:
 
-# Reset local gateway from scratch:
-rm -rf /tmp/oc-home && ./start.sh
+This contradicts the new product direction and may confuse users.
 
-# Check token redaction in MC log:
-grep -i token /var/log/mc-backend.log     # should only show ***
-```
+Next action:
+
+- Update Dashboard and any other stale copy to say native runtime/provider
+  setup, not OpenClaw setup.
+
+---
+
+### C. Native runtime is still prototype-level
+
+State:
+
+- Project Builder flow exists.
+- It emits events.
+- It pauses for approval.
+- It can call OpenRouter.
+
+Gaps:
+
+- Pydantic AI is not yet the real single-agent execution engine.
+- LangGraph is not yet the real durable workflow engine.
+- Tools are not yet executing real repository actions.
+- Patch drafting is not yet a real patch artifact flow.
+- Test execution is not yet a supervised tool.
+
+Next action:
+
+- Implement Project Builder v1 as a real LangGraph workflow.
+- Use Pydantic AI for typed planner/builder/reviewer outputs.
+- Keep events visible and debuggable.
+
+---
+
+### D. SSE replay needs to be hardened
+
+State:
+
+- Events are persisted.
+- UI can fetch events by run id.
+- SSE broadcasting exists.
+
+Gap:
+
+- The ideal design is "SSE live plus persisted replay after reconnect."
+
+Next action:
+
+- Add event sequence numbers/cursors if not already sufficient.
+- Let `/api/runs/{id}/events` support replay after a known event id.
+- Ensure UI refresh never loses timeline state.
+
+---
+
+### E. Provider key storage needs hardening
+
+State:
+
+- Provider config exists.
+- UI/API should redact secrets.
+
+Gaps:
+
+- Secret-at-rest story needs review.
+- Local file/database permissions need review.
+- Logs/screenshots must not leak keys.
+
+Next action:
+
+- Audit provider config responses.
+- Ensure no full API key is returned after save.
+- Consider OS keychain or encrypted local secret storage later.
+
+---
+
+### F. Cost accounting needs real validation
+
+State:
+
+- Provider cost recording fields exist.
+
+Gaps:
+
+- Need confirm actual OpenRouter usage response shape for all chosen models.
+- Need verify cost dashboard reads native run costs correctly.
+
+Next action:
+
+- Add tests around `record_provider_cost`.
+- Add UI trace view showing provider, requested model, actual model, tokens,
+  latency, and cost.
+
+---
+
+## 2. Product-Level Next Steps
+
+### 1. Native Project Builder v1
+
+Build the flagship workflow fully:
+
+1. Intake
+2. Clarify if needed
+3. Plan
+4. Research
+5. Draft build
+6. Approval
+7. Apply or stage patch
+8. Run tests
+9. Review
+10. Revise
+11. Final report
+
+All phases should emit events.
+
+### 2. Trace Page
+
+Every run should have a trace page showing:
+
+- prompt
+- model
+- provider
+- tool calls
+- approvals
+- outputs
+- errors
+- tokens
+- cost
+- artifacts
+
+### 3. Tool Registry Expansion
+
+Add real tools:
+
+- repository file read
+- repository search
+- draft patch
+- apply patch after approval
+- run tests after approval
+- summarize test output
+- generate report artifact
+
+### 4. Memory Hooks
+
+Native runtime should retrieve memory context before agent calls.
+
+Short-term:
+
+- keyword retrieval from existing memories
+
+Later:
+
+- embeddings
+- semantic search
+- memory quality scoring
+
+### 5. Evals
+
+Add fixtures for:
+
+- Project Builder simple feature
+- Project Builder bugfix
+- research task
+- debate task
+- prompt injection attempt
+- malformed provider output
+- runaway budget prevention
+
+---
+
+## 3. OpenClaw-Related Issues
+
+OpenClaw issues are now lower priority because native runtime is default.
+
+Keep these only if maintaining optional adapter support:
+
+- local OpenClaw CPU spin workarounds
+- bonjour/mDNS failures
+- remote gateway token scopes
+- device pairing flows
+- `gateway_bridge.py` reconnection behavior
+
+Do not let these block native runtime progress.
+
+---
+
+## 4. Security And Safety Work
+
+Important risks to address:
+
+- Prompt injection through repository files or tool outputs.
+- Excessive agency, such as writing files without approval.
+- Sensitive data disclosure to model providers.
+- Unbounded spending or runaway token usage.
+- Malformed structured output from models.
+- Tool output being trusted without validation.
+
+Recommended guardrails:
+
+- Human approval for write/destructive/external/financial tools.
+- Explicit token/cost budgets per run.
+- Tool schemas validated before execution.
+- Model outputs parsed into typed structures where possible.
+- Trace all prompts and tool calls.
+- Redact secrets in UI and logs.
+
+---
+
+## 5. Cleanups
+
+Naming cleanup:
+
+- Rename `useGatewayStatus.ts` to `useRuntimeStatus.ts`.
+- Rename old gateway compatibility columns when safe:
+  - `gateway_agent_id`
+  - `gateway_session_id`
+
+Docs cleanup:
+
+- Keep legacy OpenClaw docs but mark them optional.
+- Make native runtime docs the default path everywhere.
+
+UI cleanup:
+
+- Remove or demote OpenClaw-first language.
+- Make Runs page feel like a normal product page, not just a lab.
+- Add better empty states for missing provider key/model config.
+
