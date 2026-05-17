@@ -37,7 +37,6 @@ interface ProviderConfig {
   api_key_preview?: string
   last_test_status?: string
   last_test_message?: string
-  last_tested_at?: string
 }
 
 interface ModelConfig {
@@ -68,7 +67,6 @@ interface Approval {
   tool_name?: string
   risk_level?: string
   request_payload?: Record<string, unknown>
-  created_at?: string
 }
 
 interface RunSummary {
@@ -269,7 +267,7 @@ export default function Settings() {
               <Cpu size={18} className="text-muted-foreground" />
               <CardTitle className="text-base">Runtime</CardTitle>
             </div>
-            <CardDescription>{runtime?.ready ? 'Ready' : 'Offline'} · {runtime?.supervision ?? 'supervised'}</CardDescription>
+            <CardDescription>{runtime?.ready ? 'Ready' : 'Offline'} - {runtime?.supervision ?? 'supervised'}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -453,31 +451,34 @@ export default function Settings() {
           </CardHeader>
           <CardContent className="space-y-3">
             {approvals.length === 0 && <p className="text-sm text-muted-foreground">No pending approvals.</p>}
-            {approvals.map((approval) => (
-              <div key={approval.id} className="rounded-lg border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 font-medium text-sm">
-                      <PauseCircle size={15} className="text-yellow-400" />
-                      {approval.tool_name || approval.action_type}
+            {approvals.map((approval) => {
+              const draftPreview = approval.request_payload?.draft_preview
+              return (
+                <div key={approval.id} className="rounded-lg border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 font-medium text-sm">
+                        <PauseCircle size={15} className="text-yellow-400" />
+                        {approval.tool_name || approval.action_type}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {approval.risk_level || 'read-only'} - {approval.run_id || approval.id}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {approval.risk_level || 'read-only'} · {approval.run_id || approval.id}
-                    </div>
+                    <span className="rounded-md bg-accent px-2 py-1 text-xs text-muted-foreground">{approval.status}</span>
                   </div>
-                  <span className="rounded-md bg-accent px-2 py-1 text-xs text-muted-foreground">{approval.status}</span>
+                  {typeof draftPreview === 'string' && (
+                    <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/30 p-3 text-xs text-muted-foreground">
+                      {draftPreview}
+                    </pre>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    <Button size="sm" onClick={() => decideApproval(approval, 'approve')}>Approve</Button>
+                    <Button variant="outline" size="sm" onClick={() => decideApproval(approval, 'reject')}>Reject</Button>
+                  </div>
                 </div>
-                {typeof approval.request_payload?.draft_preview === 'string' && (
-                  <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/30 p-3 text-xs text-muted-foreground">
-                    {approval.request_payload.draft_preview}
-                  </pre>
-                )}
-                <div className="mt-3 flex gap-2">
-                  <Button size="sm" onClick={() => decideApproval(approval, 'approve')}>Approve</Button>
-                  <Button variant="outline" size="sm" onClick={() => decideApproval(approval, 'reject')}>Reject</Button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </CardContent>
         </Card>
       </div>
@@ -493,7 +494,7 @@ export default function Settings() {
             {runs.map((run) => (
               <div key={run.id} className="rounded-lg border p-3">
                 <div className="font-medium text-sm truncate">{run.title}</div>
-                <div className="text-xs text-muted-foreground mt-2">{run.status}{run.current_step ? ` · ${run.current_step}` : ''}</div>
+                <div className="text-xs text-muted-foreground mt-2">{run.status}{run.current_step ? ` - ${run.current_step}` : ''}</div>
               </div>
             ))}
           </div>
