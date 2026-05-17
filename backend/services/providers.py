@@ -14,7 +14,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-APP_TITLE = "OpenClaw Mission Control"
+APP_TITLE = "Mission Control"
 APP_REFERER = "https://github.com/adamwahla1/openclaw-mission-control"
 
 
@@ -276,6 +276,26 @@ async def get_model_config(db: aiosqlite.Connection, purpose: str) -> dict[str, 
     }
 
 
+async def _column_exists(db: aiosqlite.Connection, table: str, column: str) -> bool:
+    async with db.execute(f"PRAGMA table_info({table})") as cursor:
+        rows = await cursor.fetchall()
+    return any(row[1] == column for row in rows)
+
+
+async def _add_column_if_missing(db: aiosqlite.Connection, table: str, column: str, definition: str) -> None:
+    if not await _column_exists(db, table, column):
+        await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+async def _ensure_cost_record_columns(db: aiosqlite.Connection) -> None:
+    await _add_column_if_missing(db, "cost_records", "provider", "TEXT DEFAULT ''")
+    await _add_column_if_missing(db, "cost_records", "requested_model", "TEXT DEFAULT ''")
+    await _add_column_if_missing(db, "cost_records", "actual_model", "TEXT DEFAULT ''")
+    await _add_column_if_missing(db, "cost_records", "latency_ms", "INTEGER DEFAULT 0")
+    await _add_column_if_missing(db, "cost_records", "native_run_id", "TEXT")
+    await db.commit()
+
+
 async def record_provider_cost(
     db: aiosqlite.Connection,
     response: ProviderResponse,
@@ -286,25 +306,36 @@ async def record_provider_cost(
 ) -> None:
     from services.cost_tracker import estimate_cost
 
+    await _ensure_cost_record_columns(db)
     cost = estimate_cost(response.actual_model, response.input_tokens, response.output_tokens)
     response.cost_usd = cost
+
+    native_run_id = run_id if run_id and run_id.startswith("run-") else None
+    legacy_run_id = None if native_run_id else run_id
+
     await db.execute(
         """
         INSERT INTO cost_records
-            (id, agent_id, task_id, run_id, model, operation, input_tokens, output_tokens,
-             total_tokens, cost, currency, recorded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'USD', datetime('now'))
+            (id, agent_id, task_id, run_id, native_run_id, provider, requested_model, actual_model,
+             model, operation, input_tokens, output_tokens, total_tokens, latency_ms, cost, currency,
+             recorded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'USD', datetime('now'))
         """,
         (
             f"cost-{uuid.uuid4().hex[:8]}",
             agent_id,
             task_id,
-            run_id,
+            legacy_run_id,
+            native_run_id,
+            response.provider,
+            response.requested_model,
+            response.actual_model,
             response.actual_model,
             operation,
             response.input_tokens,
             response.output_tokens,
             response.total_tokens,
+            response.latency_ms,
             cost,
         ),
     )
