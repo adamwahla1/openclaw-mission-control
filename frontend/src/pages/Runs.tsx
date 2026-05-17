@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Activity, CheckCircle2, Clock, PauseCircle, RefreshCw, Square, XCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,7 +29,7 @@ interface RunEvent {
   data?: Record<string, unknown>
 }
 
-const statusIcon: Record<string, React.ReactNode> = {
+const statusIcon: Record<string, ReactNode> = {
   completed: <CheckCircle2 size={16} className="text-green-400" />,
   failed: <XCircle size={16} className="text-red-400" />,
   cancelled: <Square size={16} className="text-muted-foreground" />,
@@ -159,7 +160,7 @@ export default function Runs() {
               <div>
                 <CardTitle className="text-base">{selectedRun?.title ?? 'Run Timeline'}</CardTitle>
                 <CardDescription>
-                  {selectedRun ? `${selectedRun.status}${selectedRun.current_step ? ` · ${selectedRun.current_step}` : ''}` : 'Select a run'}
+                  {selectedRun ? `${selectedRun.status}${selectedRun.current_step ? ` - ${selectedRun.current_step}` : ''}` : 'Select a run'}
                 </CardDescription>
               </div>
               {selectedRun && (
